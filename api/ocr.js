@@ -1,6 +1,4 @@
-// api/ocr.js — Vercel에서 Tesseract 실행 (클라이언트 Worker 문제 없음)
-import Tesseract from 'tesseract.js';
-
+// api/ocr.js — Google Gemini Vision으로 티켓 OCR
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -8,63 +6,57 @@ export default async function handler(req, res) {
   if(req.method==='OPTIONS') return res.status(200).end();
   if(req.method!=='POST') return res.status(405).json({error:'POST만 허용'});
 
+  const GEMINI_KEY = process.env.GEMINI_API_KEY;
+  if(!GEMINI_KEY) return res.status(500).json({error:'GEMINI_API_KEY 환경변수 미설정'});
+
   const { image, mediaType } = req.body;
   if(!image) return res.status(400).json({error:'image 필드 필요'});
 
   try {
-    // base64 → Buffer
-    const buf = Buffer.from(image, 'base64');
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
 
-    const result = await Tesseract.recognize(buf, 'kor+eng');
-    const txt = result.data.text;
-    console.log('[OCR] 원문:', txt.slice(0,200));
+    const body = {
+      contents: [{
+        parts: [
+          {
+            inline_data: {
+              mime_type: mediaType || 'image/jpeg',
+              data: image
+            }
+          },
+          {
+            text: '한국 공연 티켓 사진입니다. 이미지에서 읽을 수 있는 공연 정보만 추출해 JSON으로 반환하세요. 형식: {"title":"공연명","date":"YYYY.MM.DD","time":"HH:MM","venue":"공연장","floor":"층구역","row":"열","seat":"번호","cast":"배우1, 배우2"} 규칙: 1) 마크다운 없이 JSON만 2) 읽을 수 없거나 없는 항목은 키 자체를 제외 (N/A 금지) 3) 날짜는 YYYY.MM.DD 형식'
+          }
+        ]
+      }],
+      generationConfig: { temperature: 0, maxOutputTokens: 512 }
+    };
 
-    const obj = {};
+    const upstream = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body)
+    });
 
-    // 날짜
-    const dateMatch = txt.match(/(\d{2,4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/);
-    if(dateMatch){
-      const y = dateMatch[1].length===2 ? '20'+dateMatch[1] : dateMatch[1];
-      obj.date = y+'.'+dateMatch[2].padStart(2,'0')+'.'+dateMatch[3].padStart(2,'0');
+    if(!upstream.ok) {
+      const err = await upstream.text();
+      console.error('[Gemini] 에러:', err);
+      return res.status(upstream.status).json({error: err});
     }
 
-    // 시간
-    const timeMatch = txt.match(/(\d{1,2})[:시](\d{2})분?/);
-    if(timeMatch) obj.time = timeMatch[1].padStart(2,'0')+':'+timeMatch[2];
+    const data = await upstream.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    console.log('[Gemini] 원문:', text);
 
-    // 층/구역
-    const floorMatch = txt.match(/([A-Z가-힣]?\d*[층석구역관])/);
-    if(floorMatch) obj.floor = floorMatch[1];
+    // JSON 추출
+    const match = text.match(/\{[\s\S]*?\}/);
+    if(!match) return res.status(200).json({error:'JSON 파싱 실패', raw: text});
 
-    // 열
-    const rowMatch = txt.match(/([A-Z]?\d+)열/);
-    if(rowMatch) obj.row = rowMatch[1]+'열';
-
-    // 번호
-    const seatMatch = txt.match(/(\d+)\s*번/);
-    if(seatMatch) obj.seat = seatMatch[1]+'번';
-
-    // 공연장
-    const venueMatch = txt.match(/([가-힣]+(?:씨어터|극장|홀|아트센터|센터|공연장)[\w가-힣]*)/);
-    if(venueMatch) obj.venue = venueMatch[1];
-
-    // 공연명
-    const lines = txt.split('\n').map(l=>l.trim()).filter(l=>l.length>1);
-    let titleFound = false;
-    for(let i=0;i<lines.length;i++){
-      if(/뮤지컬|연극|Musical|MUSICAL/.test(lines[i])){
-        const next=lines[i+1];
-        if(next&&/[가-힣]/.test(next)){obj.title=next;titleFound=true;break;}
-      }
-    }
-    if(!titleFound){
-      const korLines=lines.filter(l=>/[가-힣]/.test(l));
-      if(korLines.length) obj.title=korLines.sort((a,b)=>b.length-a.length)[0];
-    }
-
+    const obj = JSON.parse(match[0]);
     return res.status(200).json(obj);
+
   } catch(e) {
-    console.error('[OCR] 에러:', e);
+    console.error('[Gemini] 예외:', e);
     return res.status(500).json({error: e.message});
   }
 }
