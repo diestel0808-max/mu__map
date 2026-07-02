@@ -483,16 +483,12 @@ let tickets=[],editId=null,editing=false;
 let draft={};
 
 /* ── STORAGE ── */
-async function loadAll(){
+async function removeT(id){
   try{
-    if(typeof window.storage==='undefined'){tickets=[];render();return;}
-    const idx=await window.storage.get('mumap:index');
-    const ids=idx?JSON.parse(idx.value):[];
-    const out=[];
-    for(const id of ids){
-      try{const r=await window.storage.get('mumap:item:'+id);if(r)out.push(JSON.parse(r.value));}catch(e){}
-    }
-    tickets=out;
+    const ids=JSON.parse(localStorage.getItem('mumap:index')||'[]');
+    tickets=ids.map(id=>{
+      try{return JSON.parse(localStorage.getItem('mumap:item:'+id));}catch(e){return null;}
+    }).filter(Boolean);
   }catch(e){tickets=[];}
   render();
 }
@@ -501,15 +497,17 @@ async function persistSafe(t){
   await persist(t);
 }
 async function persist(t){
-  await window.storage.set('mumap:item:'+t.id,JSON.stringify(t));
-  await window.storage.set('mumap:index',JSON.stringify(tickets.map(x=>x.id)));
+  try{
+    localStorage.setItem('mumap:item:'+t.id,JSON.stringify(t));
+    localStorage.setItem('mumap:index',JSON.stringify(tickets.map(x=>x.id)));
+  }catch(e){console.warn('persist 오류:',e);}
 }
 async function removeT(id){
   tickets=tickets.filter(t=>t.id!==id);
-  try{if(typeof window.storage!=='undefined'){
-    await window.storage.delete('mumap:item:'+id);
-    await window.storage.set('mumap:index',JSON.stringify(tickets.map(x=>x.id)));
-  }}catch(e){}
+  try{
+    localStorage.removeItem('mumap:item:'+id);
+    localStorage.setItem('mumap:index',JSON.stringify(tickets.map(x=>x.id)));
+  }catch(e){}
   render();
 }
 
