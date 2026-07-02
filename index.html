@@ -905,13 +905,14 @@ async function save(){
     color:draft.color,poster:draft.poster,extras:[...draft.extras],
     ts:editId?(tickets.find(x=>x.id===editId)?.ts||Date.now()):Date.now()
   };
-  if(!t.title){alert('공연명을 입력해 주세요.');return;}
-  if(editId){const i=tickets.findIndex(x=>x.id===editId);if(i!==-1)tickets[i]=t;}
-  else tickets.push(t);
-  await persist(t);
-  render();
-  gotoStep(4);
-}
+  if(!t.title){const ti=$('#fTitle');ti.style.border='1.5px solid #c0392b';ti.focus();return;}
+  try{
+    if(editId){const i=tickets.findIndex(x=>x.id===editId);if(i!==-1)tickets[i]=t;}
+    else tickets.push(t);
+    try{await persist(t);}catch(e){console.warn(e);}
+    render();
+    gotoStep(4);
+  }catch(e){console.error('save 오류:',e);}
 
 /* ── DETAIL ── */
 function openDetail(id){
