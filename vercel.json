@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "functions": {
+    "api/kopis.js": { "runtime": "nodejs20.x" },
+    "api/ocr.js":   { "runtime": "nodejs20.x" }
+  },
+  "routes": [
+    { "src": "/api/kopis(.*)", "dest": "/api/kopis.js" },
+    { "src": "/api/ocr",      "dest": "/api/ocr.js"   },
+    { "src": "/(.*)",          "dest": "/mumap.html"   }
+  ]
+}
