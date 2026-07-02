@@ -25,7 +25,7 @@ export default async function handler(req, res) {
             }
           },
           {
-            text: '한국 공연 티켓 사진입니다. 이미지에서 읽을 수 있는 공연 정보만 추출해 JSON으로 반환하세요. 형식: {"title":"공연명","date":"YYYY.MM.DD","time":"HH:MM","venue":"공연장","floor":"층구역","row":"열","seat":"번호","cast":"배우1, 배우2"} 규칙: 1) 마크다운 없이 JSON만 2) 읽을 수 없거나 없는 항목은 키 자체를 제외 (N/A 금지) 3) 날짜는 YYYY.MM.DD 형식'
+            text: '한국 공연 티켓 사진입니다. 이미지에서 읽을 수 있는 공연 정보만 추출해 JSON으로 반환하세요. 형식: {"title":"공연명","date":"YYYY.MM.DD","time":"HH:MM","venue":"공연장","floor":"층구역","row":"열","seat":"번호","cast":"배우1, 배우2"} 규칙: 1) 마크다운 없이 JSON만 2) 읽을 수 없거나 없는 항목은 키 자체를 제외 3) 날짜는 YYYY.MM.DD 형식'
           }
         ]
       }],
@@ -48,8 +48,7 @@ export default async function handler(req, res) {
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     console.log('[Gemini] 원문:', text);
 
-    // JSON 추출
-    const match = text.match(/\{[\s\S]*?\}/);
+    const match = text.match(/\{[\s\S]*\}/);
     if(!match) return res.status(200).json({error:'JSON 파싱 실패', raw: text});
 
     const obj = JSON.parse(match[0]);
