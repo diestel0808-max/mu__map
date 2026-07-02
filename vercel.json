@@ -1,0 +1,7 @@
+{
+  "version": 2,
+  "rewrites": [
+    { "source": "/api/kopis", "destination": "/api/kopis.js" },
+    { "source": "/api/ocr",   "destination": "/api/ocr.js"   }
+  ]
+}
