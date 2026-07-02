@@ -483,7 +483,7 @@ let tickets=[],editId=null,editing=false;
 let draft={};
 
 /* ── STORAGE ── */
-async function removeT(id){
+async function loadAll(){
   try{
     const ids=JSON.parse(localStorage.getItem('mumap:index')||'[]');
     tickets=ids.map(id=>{
@@ -491,10 +491,6 @@ async function removeT(id){
     }).filter(Boolean);
   }catch(e){tickets=[];}
   render();
-}
-async function persistSafe(t){
-  if(typeof window.storage==='undefined')return;
-  await persist(t);
 }
 async function persist(t){
   try{
@@ -911,6 +907,7 @@ async function save(){
     render();
     gotoStep(4);
   }catch(e){console.error('save 오류:',e);}
+}
 
 /* ── DETAIL ── */
 function openDetail(id){
