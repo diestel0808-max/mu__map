@@ -1,0 +1,9 @@
+{
+  "name": "mumap-proxy",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "tesseract.js": "^5.0.4"
+  }
+}
