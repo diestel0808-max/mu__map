@@ -20,7 +20,7 @@ export default async function handler(req, res) {
         'authorization': `Bearer ${GROQ_KEY}`
       },
       body: JSON.stringify({
-        model: 'meta-llama/llama-4-maverick-17b-128e-instruct',
+        model: 'qwen/qwen3.6-27b',
         max_tokens: 512,
         temperature: 0,
         messages: [{
