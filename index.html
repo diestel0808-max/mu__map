@@ -994,7 +994,7 @@ $('#edBack').onclick=closeEditor;
 $('#cancelBtn').onclick=closeEditor;
 $('#back1Btn').onclick=()=>gotoStep(1);
 $('#back2Btn').onclick=()=>gotoStep(2);
-$('#to3Btn').onclick=()=>{if(!$('#fTitle').value.trim()){alert('공연명을 입력해 주세요.');return;}gotoStep(3);};
+$('#to3Btn').onclick=()=>{if(!$('#fTitle').value.trim()){const ti=$('#fTitle');ti.style.border='1.5px solid #c0392b';ti.focus();return;}gotoStep(3);};
 $('#edSaveBtn').onclick=save;
 $('#doneBtn').onclick=()=>{closeEditor();editing=false;$('#editPillBtn').classList.remove('solid');};
 $('#dtBack').onclick=closeDetail;
@@ -1022,21 +1022,7 @@ $('#editPillBtn').onclick=()=>{editing=!editing;$('#editPillBtn').classList.togg
 
 
 
-$('#setExport').onclick=()=>{
-  const blob=new Blob([JSON.stringify(tickets,null,2)],{type:'application/json'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='mumap-backup.json';a.click();
-};
-$('#setImport').onclick=()=>$('#importFile').click();
-$('#importFile').onchange=e=>{
-  const f=e.target.files[0];if(!f)return;
-  const r=new FileReader();
-  r.onload=async()=>{
-    try{const arr=JSON.parse(r.result);if(!Array.isArray(arr))throw 0;
-      for(const t of arr){if(!t.id)t.id=uid();tickets.push(t);await persist(t);}
-      render();alert(arr.length+'개 티켓을 불러왔어요.');}
-    catch{alert('파일을 읽을 수 없어요.');}
-  };r.readAsText(f);
-};
+
 
 // 구글 로그인 버튼
 document.getElementById('googleLoginBtn').onclick = signInWithGoogle;
