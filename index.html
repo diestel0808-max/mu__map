@@ -290,7 +290,6 @@ button,input,textarea,select{font-family:inherit}
     <button class="ibtn solid" id="newBtn">＋</button>
     <div class="logo">mu<span class="g">__</span>map</div>
     <button class="ibtn" id="editPillBtn" title="편집">✎</button>
-    <button class="ibtn" id="settingBtn" title="설정">⚙</button>
     <button class="ibtn" id="logoutBtn" title="로그아웃" style="display:none">⏻</button>
   </div>
   <div class="list" id="list"></div>
@@ -428,60 +427,7 @@ button,input,textarea,select{font-family:inherit}
   <div class="sbody" style="padding-top:8px" id="dtBody"></div>
 </div>
 
-<!-- ===== SETTINGS ===== -->
-<div class="screen" id="settings">
-  <div class="sbar">
-    <button class="back" id="settingBack">‹</button>
-    <div class="t">설정</div>
-    <div style="width:32px"></div>
-  </div>
-  <div class="sbody">
-    <div class="notice">
-      <b>💡 HTML 파일로 저장했을 때 인식이 안 되는 이유</b><br>
-      Claude Vision은 claude.ai 환경에서만 API 키 없이 자동 인식돼요. HTML 파일을 직접 열면 브라우저 보안(CORS)으로 차단됩니다.<br><br>
-      <b>해결 방법:</b> 아래에 본인의 Claude API 키를 입력하면 HTML 단독으로도 인식이 작동해요.
-    </div>
-
-    <div class="lab">티켓 사진 인식</div>
-    <div class="set-section">
-      <div class="set-row">
-        <div class="ico">🔍</div>
-        <div class="txt">
-          <div class="rt">OCR 자동 인식</div>
-          <div class="rs">브라우저에서 직접 실행 · 완전 무료 · 별도 설정 불필요</div>
-        </div>
-        <span class="set-badge ok">자동</span>
-      </div>
-    </div>
-
-    <div class="lab">공연 정보 자동완성 (KOPIS)</div>
-    <div class="set-section">
-      <div class="set-row">
-        <div class="ico">🎭</div>
-        <div class="txt">
-          <div class="rt">KOPIS 공연 정보</div>
-          <div class="rs">서버에서 자동으로 검색돼요. 별도 설정 불필요.</div>
-        </div>
-        <span class="set-badge ok">자동</span>
-      </div>
-    </div>
-
-    <div class="lab">데이터 관리</div>
-    <div class="set-section">
-      <div class="set-row" style="cursor:pointer" id="setExport">
-        <div class="ico">📦</div>
-        <div class="txt"><div class="rt">티켓 데이터 백업</div><div class="rs">JSON 파일로 내보내기</div></div>
-        <span style="color:var(--soft)">›</span>
-      </div>
-      <div class="set-row" style="cursor:pointer" id="setImport">
-        <div class="ico">📥</div>
-        <div class="txt"><div class="rt">데이터 불러오기</div><div class="rs">백업 파일에서 복원</div></div>
-        <span style="color:var(--soft)">›</span>
-      </div>
-    </div>
-    <input type="file" id="importFile" accept="application/json" hidden>
-  </div>
-</div>
+<input type="file" id="importFile" accept="application/json" hidden>
 
 <script>
 // Supabase 초기화
@@ -521,6 +467,24 @@ function showApp(){
   document.getElementById('logoutBtn').style.display='flex';
 }
 
+// URL hash에서 세션 처리 (모바일 구글 로그인 대응)
+async function handleAuthRedirect(){
+  const hash = window.location.hash;
+  if(hash && hash.includes('access_token')){
+    const { data, error } = await sb.auth.getSession();
+    if(data?.session){
+      currentUser = data.session.user;
+      userToken = data.session.access_token;
+      // URL hash 제거
+      window.history.replaceState(null, '', window.location.pathname);
+      showApp();
+      await loadAll();
+      return true;
+    }
+  }
+  return false;
+}
+
 // 인증 상태 감지
 sb.auth.onAuthStateChange(async (event, session)=>{
   if(session){
@@ -529,9 +493,15 @@ sb.auth.onAuthStateChange(async (event, session)=>{
     showApp();
     await loadAll();
   } else {
-    showLogin();
+    // hash 처리 중이면 showLogin 스킵
+    if(!window.location.hash.includes('access_token')){
+      showLogin();
+    }
   }
 });
+
+// 페이지 로드시 hash 처리
+handleAuthRedirect();
 
 const PALETTE=['#1a1a2e','#16213e','#2d1b33','#1c2b1a','#2e1a1a','#1a2535','#2a1f0e','#0d2137','#1f1f1f','#2b2b1e'];
 const $=s=>document.querySelector(s);
@@ -1049,9 +1019,7 @@ document.querySelectorAll('#stars span').forEach(st=>{
 // 편집 모드
 $('#editPillBtn').onclick=()=>{editing=!editing;$('#editPillBtn').classList.toggle('solid',editing);render();};
 
-// 설정
-$('#settingBtn').onclick=()=>{updateBadges();$('#settings').classList.add('open');};
-$('#settingBack').onclick=()=>$('#settings').classList.remove('open');
+
 
 
 $('#setExport').onclick=()=>{
