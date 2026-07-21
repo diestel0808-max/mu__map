@@ -3,6 +3,7 @@
   "rewrites": [
     { "source": "/api/kopis", "destination": "/api/kopis.js" },
     { "source": "/api/ocr",   "destination": "/api/ocr.js"   },
-    { "source": "/api/db",    "destination": "/api/db.js"    }
+    { "source": "/api/db",    "destination": "/api/db.js"    },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }
