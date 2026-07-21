@@ -555,53 +555,89 @@ function simScore(a,b){
   if(!a||!b)return 0;if(a===b)return 1;if(a.includes(b)||b.includes(a))return .9;
   let m=0;for(const c of b)if(a.includes(c))m++;return m/Math.max(a.length,b.length);
 }
-async function kopisSearch(title,date){
+async function kopisSearch(title,date,venue){
   const d=(date||'').replace(/[.\-\/]/g,'').slice(0,8);
   let st,ed;
-  if(d&&d.length>=4){const yr=d.slice(0,4);st=yr+'0101';ed=yr+'1231';}
-  else{const yr=new Date().getFullYear();st=(yr-5)+'0101';ed=yr+'1231';}
+  if(d&&d.length>=6){
+    // 날짜 전후 30일 범위로 검색 (정확한 공연 매칭)
+    const dt=new Date(d.slice(0,4)+'-'+d.slice(4,6)+'-'+d.slice(6,8));
+    const stDt=new Date(dt);stDt.setDate(stDt.getDate()-1);
+    const edDt=new Date(dt);edDt.setDate(edDt.getDate()+1);
+    st=stDt.toISOString().slice(0,10).replace(/-/g,'');
+    ed=edDt.toISOString().slice(0,10).replace(/-/g,'');
+  }else if(d&&d.length>=4){
+    const yr=d.slice(0,4);st=yr+'0101';ed=yr+'1231';
+  }else{
+    const yr=new Date().getFullYear();st=(yr-5)+'0101';ed=yr+'1231';
+  }
+
   const kw=encodeURIComponent((title||'').slice(0,20));
-  const url=`/api/kopis?path=pblprfr&stdate=${st}&eddate=${ed}&shprfnm=${kw}&rows=10`;
+  const url=`/api/kopis?path=pblprfr&stdate=${st}&eddate=${ed}&shprfnm=${kw}&rows=20`;
   console.log('[KOPIS] 검색:', url);
   try{
     const res=await fetch(url);
     const raw=await res.text();
-    console.log('[KOPIS] 응답 원문 (처음 500자):', raw.slice(0,500));
     const xml=new DOMParser().parseFromString(raw,'text/xml');
-    const items=[...xml.querySelectorAll('db')];
+    let items=[...xml.querySelectorAll('db')];
     console.log('[KOPIS] 결과 수:', items.length);
+
     if(!items.length){
-      // shprfnm 없이 재시도 (제목 글자별 검색)
-      return await kopisSearchFallback(title,st,ed);
+      // 날짜 범위 넓혀서 재시도
+      return await kopisSearchWide(title,d,venue);
     }
+
+    // 공연장 이름으로 추가 필터링
+    if(venue&&venue.length>1){
+      const venueNorm=(venue||'').replace(/\s/g,'').toLowerCase();
+      const venueFiltered=items.filter(item=>{
+        const fclt=(item.querySelector('fcltynm')?.textContent||'').replace(/\s/g,'').toLowerCase();
+        return fclt.includes(venueNorm.slice(0,4))||venueNorm.includes(fclt.slice(0,4));
+      });
+      if(venueFiltered.length>0){
+        console.log('[KOPIS] 공연장 필터 후:', venueFiltered.length);
+        items=venueFiltered;
+      }
+    }
+
     let best=null,bestSc=0;
     items.forEach(item=>{
       const nm=item.querySelector('prfnm')?.textContent||'';
-      console.log('[KOPIS] 후보:', nm);
-      const sc=simScore(nm,title);if(sc>bestSc){bestSc=sc;best=item;}
+      const sc=simScore(nm,title);
+      if(sc>bestSc){bestSc=sc;best=item;}
     });
     console.log('[KOPIS] 최고 유사도:', bestSc);
-    if(!best||bestSc<0.2)return null;
+    if(!best||bestSc<0.15)return null;
     const mt=best.querySelector('mt20id')?.textContent;
     if(mt)return await kopisDetail(mt);
     return parseKopisItem(best);
   }catch(e){return null;}
 }
-async function kopisSearchFallback(title,st,ed){
-  const kw=encodeURIComponent((title||'').slice(0,4));
-  const url=`/api/kopis?path=pblprfr&stdate=${st}&eddate=${ed}&shprfnm=${kw}&rows=10`;
-  console.log('[KOPIS fallback]:', url);
+
+async function kopisSearchWide(title,d,venue){
+  // 날짜 범위 넓혀서 재시도 (연도 전체)
+  const yr=d?d.slice(0,4):new Date().getFullYear().toString();
+  const st=yr+'0101',ed=yr+'1231';
+  const kw=encodeURIComponent((title||'').slice(0,10));
+  const url=`/api/kopis?path=pblprfr&stdate=${st}&eddate=${ed}&shprfnm=${kw}&rows=20`;
+  console.log('[KOPIS wide]:', url);
   try{
     const res=await fetch(url);
     const raw=await res.text();
     const xml=new DOMParser().parseFromString(raw,'text/xml');
-    const items=[...xml.querySelectorAll('db')];
-    console.log('[KOPIS fallback] 결과 수:', items.length);
+    let items=[...xml.querySelectorAll('db')];
     if(!items.length)return null;
+    // 공연장 필터
+    if(venue&&venue.length>1){
+      const venueNorm=venue.replace(/\s/g,'').toLowerCase();
+      const vf=items.filter(item=>{
+        const fclt=(item.querySelector('fcltynm')?.textContent||'').replace(/\s/g,'').toLowerCase();
+        return fclt.includes(venueNorm.slice(0,4))||venueNorm.includes(fclt.slice(0,4));
+      });
+      if(vf.length>0)items=vf;
+    }
     let best=null,bestSc=0;
     items.forEach(item=>{
       const nm=item.querySelector('prfnm')?.textContent||'';
-      console.log('[KOPIS fallback] 후보:', nm);
       const sc=simScore(nm,title);if(sc>bestSc){bestSc=sc;best=item;}
     });
     if(!best||bestSc<0.15)return null;
@@ -644,7 +680,7 @@ async function tryKopis(){
   const box=$('#kopisBox');
   box.innerHTML='<div style="font-size:12px;color:var(--soft);padding:8px 0">🔍 KOPIS에서 공연 정보 검색 중…</div>';
   let info=null;
-  try{info=await kopisSearch(title,date);}catch(e){}
+  const venue=$('#fVenue').value.trim();try{info=await kopisSearch(title,date,venue);}catch(e){}
   if(!info){box.innerHTML='';return;}
   box.innerHTML=`<div class="kopis-result">
     <div class="kr-t">🎭 KOPIS 공연 정보 발견</div>
@@ -673,10 +709,14 @@ async function tryKopis(){
 }
 async function loadPosterFromUrl(url){
   try{
-    const res=await fetch(url);const blob=await res.blob();
+    // KOPIS 이미지는 CORS 차단 → /api/kopis 프록시 통해 가져옴
+    const proxyUrl='/api/kopis?path=poster&url='+encodeURIComponent(url);
+    const res=await fetch(proxyUrl);
+    if(!res.ok)throw new Error('포스터 로드 실패');
+    const blob=await res.blob();
     const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(blob);});
     draft.poster=b64;renderPosterBox();
-  }catch(e){}
+  }catch(e){console.warn('포스터 로드 실패:',e);}
 }
 
 /* ── OCR ── */
