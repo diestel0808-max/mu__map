@@ -502,7 +502,7 @@ sb.auth.onAuthStateChange(async (event, session)=>{
 // 페이지 로드시 hash 처리
 handleAuthRedirect();
 
-const PALETTE=['#1a1a2e','#16213e','#2d1b33','#1c2b1a','#2e1a1a','#1a2535','#2a1f0e','#0d2137','#1f1f1f','#2b2b1e'];
+const PALETTE=['#2F3A3A','#AFA48E','#6E7E73','#B86F52','#C57B6B','#35505C'];
 const $=s=>document.querySelector(s);
 const uid=()=>'tk_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
 
@@ -645,30 +645,22 @@ async function tryKopis(){
   let info=null;
   try{info=await kopisSearch(title,date);}catch(e){}
   if(!info){box.innerHTML='';return;}
-  box.innerHTML=`<div class="kopis-result">
-    <div class="kr-t">🎭 KOPIS 공연 정보 발견</div>
-    <div class="kr-row">
-      <b>공연명</b> ${esc(info.title)}<br>
-      <b>공연장</b> ${esc(info.venue)}<br>
-      ${info.cast?`<b>캐스팅</b> ${esc(info.cast)}<br>`:''}
-      <b>기간</b> ${esc(info.dateRange)}
-    </div>
-    <button class="kopis-apply" id="kopisApplyBtn">이 정보로 채우기 + 포스터 불러오기</button>
-  </div>`;
-  $('#kopisApplyBtn').onclick=async()=>{
-    if(info.venue)$('#fVenue').value=info.venue;
-    if(info.cast)$('#fCast').value=info.cast;
-    if(info.genre){
-      if(/뮤지컬/i.test(info.genre))$('#fType').value='뮤지컬';
-      else if(/연극/i.test(info.genre))$('#fType').value='연극';
-      else if(/콘서트/i.test(info.genre))$('#fType').value='콘서트';
-    }
-    if(info.poster&&!draft.poster){
-      box.innerHTML='<div style="font-size:12px;color:var(--soft);padding:6px 0">🖼 포스터 불러오는 중…</div>';
-      await loadPosterFromUrl(info.poster);
-    }
-    box.innerHTML='<div style="font-size:12px;color:#1a7a40;padding:6px 0;font-weight:700">✓ 공연 정보 및 포스터 적용 완료. 확인 후 다음으로 넘어가세요.</div>';
-  };
+  // 공연 정보 자동 적용 (버튼 없이)
+  if(info.venue)$('#fVenue').value=info.venue;
+  if(info.cast)$('#fCast').value=info.cast;
+  if(info.genre){
+    if(/뮤지컬/i.test(info.genre))$('#fType').value='뮤지컬';
+    else if(/연극/i.test(info.genre))$('#fType').value='연극';
+    else if(/콘서트/i.test(info.genre))$('#fType').value='콘서트';
+  }
+  // 포스터 자동 로드
+  if(info.poster&&!draft.poster){
+    box.innerHTML='<div style="font-size:12px;color:var(--soft);padding:6px 0">🖼 포스터 불러오는 중…</div>';
+    await loadPosterFromUrl(info.poster);
+    box.innerHTML='<div style="font-size:12px;color:#1a7a40;padding:6px 0;font-weight:700">✓ 공연 정보 및 포스터 적용 완료.</div>';
+  }else{
+    box.innerHTML='<div style="font-size:12px;color:#1a7a40;padding:6px 0;font-weight:700">✓ 공연 정보 적용 완료.</div>';
+  }
 }
 async function loadPosterFromUrl(url){
   try{
