@@ -1,4 +1,4 @@
-// api/ocr.js — Groq Vision으로 티켓 OCR (무료, 한국 지원)
+// api/ocr.js — Groq Vision (qwen3.6-27b)
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -28,13 +28,11 @@ export default async function handler(req, res) {
           content: [
             {
               type: 'image_url',
-              image_url: {
-                url: `data:${mediaType || 'image/jpeg'};base64,${image}`
-              }
+              image_url: { url: `data:${mediaType || 'image/jpeg'};base64,${image}` }
             },
             {
               type: 'text',
-              text: '한국 공연 티켓 사진입니다. 이미지에서 읽을 수 있는 공연 정보만 추출해 JSON으로 반환하세요. 형식: {"title":"공연명","date":"YYYY.MM.DD","time":"HH:MM","venue":"공연장","floor":"층구역","row":"열","seat":"번호","cast":"배우1, 배우2"} 규칙: 1) 마크다운 없이 JSON만 2) 읽을 수 없거나 없는 항목은 키 자체를 제외 3) 날짜는 YYYY.MM.DD 형식'
+              text: '한국 공연 티켓 사진입니다. 읽을 수 있는 공연 정보만 추출해 JSON으로 반환하세요. 형식: {"title":"공연명","date":"YYYY.MM.DD","time":"HH:MM","venue":"공연장","floor":"층구역","row":"열","seat":"번호","cast":"배우1, 배우2"} 규칙: 마크다운 없이 JSON만, 없는 항목은 키 제외, N/A 금지'
             }
           ]
         }]
@@ -43,22 +41,16 @@ export default async function handler(req, res) {
 
     if(!response.ok) {
       const err = await response.text();
-      console.error('[Groq] 에러:', err);
       return res.status(response.status).json({error: err});
     }
 
     const data = await response.json();
     const text = data.choices?.[0]?.message?.content || '';
-    console.log('[Groq] 원문:', text);
-
     const match = text.match(/\{[\s\S]*\}/);
     if(!match) return res.status(200).json({error:'JSON 파싱 실패', raw: text});
-
-    const obj = JSON.parse(match[0]);
-    return res.status(200).json(obj);
+    return res.status(200).json(JSON.parse(match[0]));
 
   } catch(e) {
-    console.error('[Groq] 예외:', e);
     return res.status(500).json({error: e.message});
   }
 }
