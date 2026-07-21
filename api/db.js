@@ -12,17 +12,14 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if(req.method==='OPTIONS') return res.status(200).end();
 
-  // Authorization 헤더에서 user JWT 추출
   const token = req.headers.authorization?.replace('Bearer ','');
   if(!token) return res.status(401).json({error:'인증 필요'});
 
-  // 토큰으로 user 확인
   const { data: { user }, error: authError } = await supabase.auth.getUser(token);
   if(authError || !user) return res.status(401).json({error:'유효하지 않은 토큰'});
 
   const uid = user.id;
 
-  // GET — 티켓 목록 조회
   if(req.method==='GET'){
     const { data, error } = await supabase
       .from('tickets')
@@ -33,19 +30,22 @@ export default async function handler(req, res) {
     return res.status(200).json(data);
   }
 
-  // POST — 티켓 저장 (upsert)
   if(req.method==='POST'){
     const ticket = req.body;
     const { error } = await supabase
       .from('tickets')
-      .upsert({ ...ticket, user_id: uid, "cast": ticket.cast });
+      .upsert({
+        ...ticket,
+        user_id: uid,
+        cast: ticket.cast || ''
+      });
     if(error) return res.status(500).json({error: error.message});
     return res.status(200).json({ok: true});
   }
 
-  // DELETE — 티켓 삭제
   if(req.method==='DELETE'){
     const { id } = req.query;
+    if(!id) return res.status(400).json({error:'id 필요'});
     const { error } = await supabase
       .from('tickets')
       .delete()
