@@ -468,9 +468,21 @@ function showApp(){
   document.getElementById('logoutBtn').style.visibility='visible';
 }
 
-// 구글 로그인 후 URL에 access_token이 붙는 문제 즉시 제거
-if(window.location.hash && window.location.hash.includes('access_token')){
-  window.history.replaceState(null, '', window.location.pathname);
+// URL hash에서 세션 처리 (모바일 구글 로그인 대응)
+async function handleAuthRedirect(){
+  const hash = window.location.hash;
+  if(hash && hash.includes('access_token')){
+    const { data, error } = await sb.auth.getSession();
+    if(data?.session){
+      currentUser = data.session.user;
+      userToken = data.session.access_token;
+      window.history.replaceState(null, '', window.location.pathname);
+      showApp();
+      await loadAll();
+      return true;
+    }
+  }
+  return false;
 }
 
 // 인증 상태 감지
@@ -481,9 +493,14 @@ sb.auth.onAuthStateChange(async (event, session)=>{
     showApp();
     await loadAll();
   } else {
-    showLogin();
+    if(!window.location.hash.includes('access_token')){
+      showLogin();
+    }
   }
 });
+
+// 페이지 로드시 hash 처리
+handleAuthRedirect();
 
 const PALETTE=['#1a1a2e','#16213e','#2d1b33','#1c2b1a','#2e1a1a','#1a2535','#2a1f0e','#0d2137','#1f1f1f','#2b2b1e'];
 const $=s=>document.querySelector(s);
