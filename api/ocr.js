@@ -23,8 +23,6 @@ export default async function handler(req, res) {
         model: 'qwen/qwen3.6-27b',
         max_tokens: 512,
         temperature: 0,
-        // thinking 모드 비활성화 - <think> 태그 방지
-        extra_body: { thinking: { type: 'disabled' } },
         messages: [{
           role: 'user',
           content: [
