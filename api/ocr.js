@@ -45,34 +45,30 @@ export default async function handler(req, res) {
     }
 
     const data = await response.json();
-    const text = data.choices?.[0]?.message?.content || '';
+    let text = data.choices?.[0]?.message?.content || '';
 
-    // <think>...</think> 태그 제거
-    const cleaned = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+    // <think>...</think> 태그 제거 (중첩 포함, 탐욕적)
+    text = text.replace(/<think>[\s\S]*?<\/think>/gi, '');
+    // 혹시 닫히지 않은 <think> 이후 내용도 제거
+    const thinkStart = text.indexOf('<think>');
+    if(thinkStart !== -1) text = text.slice(0, thinkStart);
+    text = text.trim();
 
     // JSON 추출
-    const start = cleaned.indexOf('{');
-    const end = cleaned.lastIndexOf('}');
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
 
-    // JSON이 없으면 원문을 그대로 반환해서 클라이언트에서 볼 수 있게
-    if(start === -1 || end === -1) {
-      return res.status(200).json({
-        error: 'JSON 없음',
-        raw: cleaned.slice(0, 300),
-        title: cleaned.slice(0, 50) // 혹시라도 텍스트가 있으면 title로
-      });
+    if(start === -1 || end === -1 || start >= end) {
+      // JSON 없어도 빈 객체 반환 — 클라이언트에서 다음 단계로 넘어감
+      return res.status(200).json({});
     }
 
-    const jsonStr = cleaned.slice(start, end+1);
+    const jsonStr = text.slice(start, end+1);
     try {
       const obj = JSON.parse(jsonStr);
       return res.status(200).json(obj);
     } catch(e) {
-      // 파싱 실패시 raw 텍스트도 같이 반환
-      return res.status(200).json({
-        error: 'JSON 파싱 실패',
-        raw: jsonStr.slice(0, 300)
-      });
+      return res.status(200).json({});
     }
 
   } catch(e) {
