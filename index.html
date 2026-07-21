@@ -485,25 +485,31 @@ let draft={};
 /* ── STORAGE ── */
 async function loadAll(){
   try{
-    const ids=JSON.parse(localStorage.getItem('mumap:index')||'[]');
-    tickets=ids.map(id=>{
-      try{return JSON.parse(localStorage.getItem('mumap:item:'+id));}catch(e){return null;}
-    }).filter(Boolean);
+    if(typeof window.storage==='undefined'){tickets=[];render();return;}
+    const idx=await window.storage.get('mumap:index');
+    const ids=idx?JSON.parse(idx.value):[];
+    const out=[];
+    for(const id of ids){
+      try{const r=await window.storage.get('mumap:item:'+id);if(r)out.push(JSON.parse(r.value));}catch(e){}
+    }
+    tickets=out;
   }catch(e){tickets=[];}
   render();
 }
+async function persistSafe(t){
+  if(typeof window.storage==='undefined')return;
+  await persist(t);
+}
 async function persist(t){
-  try{
-    localStorage.setItem('mumap:item:'+t.id,JSON.stringify(t));
-    localStorage.setItem('mumap:index',JSON.stringify(tickets.map(x=>x.id)));
-  }catch(e){console.warn('persist 오류:',e);}
+  await window.storage.set('mumap:item:'+t.id,JSON.stringify(t));
+  await window.storage.set('mumap:index',JSON.stringify(tickets.map(x=>x.id)));
 }
 async function removeT(id){
   tickets=tickets.filter(t=>t.id!==id);
-  try{
-    localStorage.removeItem('mumap:item:'+id);
-    localStorage.setItem('mumap:index',JSON.stringify(tickets.map(x=>x.id)));
-  }catch(e){}
+  try{if(typeof window.storage!=='undefined'){
+    await window.storage.delete('mumap:item:'+id);
+    await window.storage.set('mumap:index',JSON.stringify(tickets.map(x=>x.id)));
+  }}catch(e){}
   render();
 }
 
@@ -899,14 +905,12 @@ async function save(){
     color:draft.color,poster:draft.poster,extras:[...draft.extras],
     ts:editId?(tickets.find(x=>x.id===editId)?.ts||Date.now()):Date.now()
   };
-  if(!t.title){const ti=$('#fTitle');ti.style.border='1.5px solid #c0392b';ti.focus();return;}
-  try{
-    if(editId){const i=tickets.findIndex(x=>x.id===editId);if(i!==-1)tickets[i]=t;}
-    else tickets.push(t);
-    try{await persist(t);}catch(e){console.warn(e);}
-    render();
-    gotoStep(4);
-  }catch(e){console.error('save 오류:',e);}
+  if(!t.title){alert('공연명을 입력해 주세요.');return;}
+  if(editId){const i=tickets.findIndex(x=>x.id===editId);if(i!==-1)tickets[i]=t;}
+  else tickets.push(t);
+  await persist(t);
+  render();
+  gotoStep(4);
 }
 
 /* ── DETAIL ── */
