@@ -46,13 +46,20 @@ export default async function handler(req, res) {
 
     const data = await response.json();
     const text = data.choices?.[0]?.message?.content || '';
+    console.log('[Groq] 원문:', text.slice(0,300));
+
+    // <think>...</think> 태그 제거
     const cleaned = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+
+    // JSON 추출 - 중첩 가능한 방식으로
     const start = cleaned.indexOf('{');
     const end = cleaned.lastIndexOf('}');
     if(start === -1 || end === -1) return res.status(200).json({error:'JSON 없음', raw: text.slice(0,200)});
+
     const jsonStr = cleaned.slice(start, end+1);
     try{
-      return res.status(200).json(JSON.parse(jsonStr));
+      const obj = JSON.parse(jsonStr);
+      return res.status(200).json(obj);
     }catch(e){
       return res.status(200).json({error:'JSON 파싱 실패: '+e.message, raw: jsonStr.slice(0,200)});
     }
