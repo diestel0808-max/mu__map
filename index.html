@@ -427,7 +427,6 @@ button,input,textarea,select{font-family:inherit}
   <div class="sbody" style="padding-top:8px" id="dtBody"></div>
 </div>
 
-<input type="file" id="importFile" accept="application/json" hidden>
 
 <script>
 // Supabase 초기화
@@ -654,10 +653,14 @@ async function tryKopis(){
 }
 async function loadPosterFromUrl(url){
   try{
-    const res=await fetch(url);const blob=await res.blob();
+    // KOPIS 이미지 CORS 차단 → 서버 프록시 경유
+    const proxyUrl='/api/kopis?path=poster&url='+encodeURIComponent(url);
+    const res=await fetch(proxyUrl);
+    if(!res.ok)throw new Error('포스터 로드 실패');
+    const blob=await res.blob();
     const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(blob);});
     draft.poster=b64;renderPosterBox();
-  }catch(e){}
+  }catch(e){console.warn('포스터 로드 실패:',e);}
 }
 
 /* ── OCR ── */
@@ -975,7 +978,7 @@ $('#edBack').onclick=closeEditor;
 $('#cancelBtn').onclick=closeEditor;
 $('#back1Btn').onclick=()=>gotoStep(1);
 $('#back2Btn').onclick=()=>gotoStep(2);
-$('#to3Btn').onclick=()=>{if(!$('#fTitle').value.trim()){alert('공연명을 입력해 주세요.');return;}gotoStep(3);};
+$('#to3Btn').onclick=()=>{if(!$('#fTitle').value.trim()){const ti=$('#fTitle');ti.style.border='1.5px solid #c0392b';ti.focus();return;}gotoStep(3);};
 $('#edSaveBtn').onclick=save;
 $('#doneBtn').onclick=()=>{closeEditor();editing=false;$('#editPillBtn').classList.remove('solid');};
 $('#dtBack').onclick=closeDetail;
