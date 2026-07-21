@@ -735,7 +735,8 @@ async function runClaudeOCR(file){
   const obj=await res.json();
   console.log('[OCR] 결과:', obj);
 
-  if(!obj.title && !obj.date) throw new Error('공연 정보를 인식하지 못했어요. 글자가 잘 보이는 사진으로 다시 시도해 주세요.');
+  if(obj.error) throw new Error(obj.error + (obj.raw ? ' | 원문: '+obj.raw.slice(0,80) : ''));
+  if(!obj.title && !obj.date) throw new Error('인식 실패. 원문: '+JSON.stringify(obj).slice(0,100));
   return obj;
 }
 
