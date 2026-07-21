@@ -555,6 +555,8 @@ function simScore(a,b){
   let m=0;for(const c of b)if(a.includes(c))m++;return m/Math.max(a.length,b.length);
 }
 async function kopisSearch(title,date){
+  // 장르 접두어 제거: "뮤지컬 오페라의 유령" → "오페라의 유령"
+  title=(title||'').replace(/^(뮤지컬|연극|콘서트|오페라|무용|클래식)\s+/u,'').trim();
   const d=(date||'').replace(/[.\-\/]/g,'').slice(0,8);
   let st,ed;
   if(d&&d.length>=4){const yr=d.slice(0,4);st=yr+'0101';ed=yr+'1231';}
