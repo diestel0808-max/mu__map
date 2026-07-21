@@ -561,7 +561,8 @@ async function kopisSearch(title,date){
   let st,ed;
   if(d&&d.length>=4){const yr=d.slice(0,4);st=yr+'0101';ed=yr+'1231';}
   else{const yr=new Date().getFullYear();st=(yr-5)+'0101';ed=yr+'1231';}
-  const kw=encodeURIComponent((title||'').slice(0,20));
+  // KOPIS는 공백 포함 검색어를 INVALID PARAMETER로 처리 → 공백 제거, 앞 6자
+  const kw=encodeURIComponent((title||'').replace(/\s+/g,'').slice(0,6));
   const url=`/api/kopis?path=pblprfr&stdate=${st}&eddate=${ed}&shprfnm=${kw}&rows=10`;
   console.log('[KOPIS] 검색:', url);
   try{
