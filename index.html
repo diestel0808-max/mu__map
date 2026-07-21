@@ -290,7 +290,7 @@ button,input,textarea,select{font-family:inherit}
     <button class="ibtn solid" id="newBtn">＋</button>
     <div class="logo">mu<span class="g">__</span>map</div>
     <button class="ibtn" id="editPillBtn" title="편집">✎</button>
-    <button class="ibtn" id="logoutBtn" title="로그아웃" style="display:none">⏻</button>
+    <button class="ibtn" id="logoutBtn" title="로그아웃">⏻</button>
   </div>
   <div class="list" id="list"></div>
 </div>
@@ -459,11 +459,13 @@ function showLogin(){
   document.getElementById('loginScreen').style.display='flex';
   document.getElementById('mainApp').style.display='none';
   document.getElementById('logoutBtn').style.display='none';
+  document.getElementById('logoutBtn').style.visibility='hidden';
 }
 function showApp(){
   document.getElementById('loginScreen').style.display='none';
   document.getElementById('mainApp').style.display='block';
   document.getElementById('logoutBtn').style.display='flex';
+  document.getElementById('logoutBtn').style.visibility='visible';
 }
 
 // 구글 로그인 후 URL에 access_token이 붙는 문제 즉시 제거
@@ -689,8 +691,6 @@ async function runClaudeOCR(file){
   const obj=await res.json();
   console.log('[OCR] 결과:', obj);
 
-  if(obj.error) throw new Error(obj.error + (obj.raw ? ' | 원문: '+obj.raw.slice(0,80) : ''));
-  if(!obj.title && !obj.date) throw new Error('인식 실패. 원문: '+JSON.stringify(obj).slice(0,100));
   return obj;
 }
 
@@ -712,10 +712,15 @@ async function runOCR(file){
       else if(/연극/i.test(f.type))$('#fType').value='연극';
     }
     const n=Object.values(f).filter(Boolean).length;
-    st.className='ocr done';st.textContent=`✓ ${n}개 항목 인식 완료. 다음 단계에서 정보를 확인해 주세요.`;
+    if(n>0){
+      st.className='ocr done';st.textContent='✓ '+n+'개 항목 인식 완료. 다음 단계에서 정보를 확인해 주세요.';
+    }else{
+      st.className='ocr err';st.textContent='⚠️ 인식하지 못했어요. 다음 단계에서 직접 입력해 주세요.';
+    }
     setTimeout(()=>tryKopis(),300);
   }catch(e){
-    st.className='ocr err';st.textContent='❌ 인식 실패: '+e.message;
+    st.className='ocr err';st.textContent='⚠️ 일부만 인식됐어요. 다음 단계에서 직접 입력해 주세요.';
+    setTimeout(()=>gotoStep(2),2000);
   }
 }
 
