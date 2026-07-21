@@ -46,9 +46,16 @@ export default async function handler(req, res) {
 
     const data = await response.json();
     const text = data.choices?.[0]?.message?.content || '';
-    const match = text.match(/\{[\s\S]*\}/);
-    if(!match) return res.status(200).json({error:'JSON 파싱 실패', raw: text});
-    return res.status(200).json(JSON.parse(match[0]));
+    const cleaned = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+    const start = cleaned.indexOf('{');
+    const end = cleaned.lastIndexOf('}');
+    if(start === -1 || end === -1) return res.status(200).json({error:'JSON 없음', raw: text.slice(0,200)});
+    const jsonStr = cleaned.slice(start, end+1);
+    try{
+      return res.status(200).json(JSON.parse(jsonStr));
+    }catch(e){
+      return res.status(200).json({error:'JSON 파싱 실패: '+e.message, raw: jsonStr.slice(0,200)});
+    }
 
   } catch(e) {
     return res.status(500).json({error: e.message});
