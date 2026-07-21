@@ -705,8 +705,7 @@ async function runClaudeOCR(file){
   const obj=await res.json();
   console.log('[OCR] 결과:', obj);
 
-  if(obj.error) throw new Error(obj.error + (obj.raw ? ' | 원문: '+obj.raw.slice(0,80) : ''));
-  if(!obj.title && !obj.date) throw new Error('인식 실패. 원문: '+JSON.stringify(obj).slice(0,100));
+  // 에러가 있어도 그냥 반환 — 빈 객체면 다음 단계에서 직접 입력
   return obj;
 }
 
@@ -731,7 +730,10 @@ async function runOCR(file){
     st.className='ocr done';st.textContent=`✓ ${n}개 항목 인식 완료. 다음 단계에서 정보를 확인해 주세요.`;
     setTimeout(()=>tryKopis(),300);
   }catch(e){
-    st.className='ocr err';st.textContent='❌ 인식 실패: '+e.message;
+    st.className='ocr err';
+    st.textContent='⚠️ 일부 정보를 인식하지 못했어요. 다음 단계에서 직접 입력해 주세요.';
+    // 실패해도 다음 단계로 자동 이동 (2초 후)
+    setTimeout(()=>gotoStep(2),2000);
   }
 }
 
