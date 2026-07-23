@@ -283,6 +283,27 @@ button,input,textarea,select{font-family:inherit}
 /* INFO NOTICE */
 .notice{background:#fffbe6;border:1px solid #f0d060;border-radius:10px;padding:12px 14px;font-size:12.5px;line-height:1.6;color:#6b5500;margin-bottom:14px}
 .notice b{font-weight:700}
+/* CROP MODAL */
+.crop-modal{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:999;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px}
+.crop-modal[hidden]{display:none}
+.crop-head{color:#fff;font-size:14px;font-weight:700;margin-bottom:14px;text-align:center}
+.crop-stage{position:relative;max-width:100%;max-height:60vh;touch-action:none;
+  display:flex;align-items:center;justify-content:center;overflow:hidden}
+.crop-stage img{max-width:100%;max-height:60vh;display:block;user-select:none;-webkit-user-drag:none}
+.crop-box{position:absolute;border:2px solid #fff;box-shadow:0 0 0 2000px rgba(0,0,0,.55);
+  cursor:move;touch-action:none}
+.crop-handle{position:absolute;width:22px;height:22px;background:#fff;border-radius:50%;
+  box-shadow:0 1px 4px rgba(0,0,0,.4);touch-action:none}
+.crop-handle[data-h="nw"]{left:-11px;top:-11px;cursor:nwse-resize}
+.crop-handle[data-h="ne"]{right:-11px;top:-11px;cursor:nesw-resize}
+.crop-handle[data-h="sw"]{left:-11px;bottom:-11px;cursor:nesw-resize}
+.crop-handle[data-h="se"]{right:-11px;bottom:-11px;cursor:nwse-resize}
+.crop-foot{display:flex;gap:8px;margin-top:16px;width:100%;max-width:420px}
+.crop-foot .wbtn{background:transparent;color:#fff;border-color:#666}
+.crop-foot .wbtn.primary{background:#fff;color:#16161a;border-color:#fff}
+.crop-retry{display:inline-block;margin-left:8px;font-size:12px;font-weight:700;
+  color:var(--ink);text-decoration:underline;cursor:pointer;background:none;border:none;padding:0}
 </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.0/dist/umd/supabase.min.js"></script>
 </head>
@@ -337,6 +358,26 @@ button,input,textarea,select{font-family:inherit}
       <input type="file" id="ticketPhoto" accept="image/*" hidden>
     </div>
     <div class="ocr-wrap"><div id="ocrStatus"></div></div>
+
+    <!-- CROP MODAL -->
+    <div class="crop-modal" id="cropModal" hidden>
+      <div class="crop-head">티켓에서 글자가 보이는 부분만 잘라주세요</div>
+      <div class="crop-stage" id="cropStage">
+        <img id="cropImg" alt="">
+        <div class="crop-box" id="cropBox">
+          <div class="crop-handle" data-h="nw"></div>
+          <div class="crop-handle" data-h="ne"></div>
+          <div class="crop-handle" data-h="sw"></div>
+          <div class="crop-handle" data-h="se"></div>
+        </div>
+      </div>
+      <div class="crop-foot">
+        <button class="wbtn" id="cropCancelBtn">취소</button>
+        <button class="wbtn" id="cropSkipBtn">전체 사진 그대로</button>
+        <button class="wbtn primary" id="cropConfirmBtn">이 영역으로 인식</button>
+      </div>
+    </div>
+
     <div class="wiz-foot">
       <button class="wbtn" id="cancelBtn">취소</button>
       <button class="wbtn primary" id="to2Btn">다음 →</button>
@@ -717,6 +758,90 @@ async function loadPosterFromUrl(url){
   }catch(e){console.warn('포스터 로드 실패:',e);}
 }
 
+/* ── CROP ── */
+let lastRawFile=null;
+let cropDrag=null;
+function openCropModal(file){
+  lastRawFile=file;
+  const modal=$('#cropModal'), img=$('#cropImg');
+  img.src=URL.createObjectURL(file);
+  modal.hidden=false;
+  img.onload=()=>{
+    const iw=img.clientWidth, ih=img.clientHeight;
+    // 기본 크롭 영역: 좌우 5%, 상하 10% 여백에서 시작 (사용자가 드래그로 조정)
+    setBox(iw*0.05, ih*0.1, iw*0.9, ih*0.8);
+  };
+}
+function closeCropModal(){ $('#cropModal').hidden=true; }
+function setBox(x,y,w,h){
+  const box=$('#cropBox');
+  box.style.left=x+'px';box.style.top=y+'px';box.style.width=w+'px';box.style.height=h+'px';
+}
+function getBoxRect(){
+  const box=$('#cropBox');
+  return {x:parseFloat(box.style.left)||0,y:parseFloat(box.style.top)||0,
+    w:parseFloat(box.style.width)||0,h:parseFloat(box.style.height)||0};
+}
+(function initCropDrag(){
+  const stage=$('#cropStage'), box=$('#cropBox');
+  const MIN=40;
+  function clampBox(r){
+    const ir=$('#cropImg').getBoundingClientRect(), sr=stage.getBoundingClientRect();
+    const offX=ir.left-sr.left, offY=ir.top-sr.top, iw=ir.width, ih=ir.height;
+    let {x,y,w,h}=r;
+    w=Math.max(MIN,Math.min(w,iw));h=Math.max(MIN,Math.min(h,ih));
+    x=Math.max(offX,Math.min(x,offX+iw-w));
+    y=Math.max(offY,Math.min(y,offY+ih-h));
+    return {x,y,w,h};
+  }
+  function onMove(e){
+    if(!cropDrag)return;
+    const dx=e.clientX-cropDrag.startX, dy=e.clientY-cropDrag.startY;
+    let {x,y,w,h}=cropDrag.startBox;
+    const m=cropDrag.mode;
+    if(m==='move'){x+=dx;y+=dy;}
+    else{
+      if(m.includes('w')){x+=dx;w-=dx;}
+      if(m.includes('e')){w+=dx;}
+      if(m.includes('n')){y+=dy;h-=dy;}
+      if(m.includes('s')){h+=dy;}
+    }
+    const c=clampBox({x,y,w,h});
+    setBox(c.x,c.y,c.w,c.h);
+  }
+  function onUp(){
+    cropDrag=null;
+    window.removeEventListener('pointermove',onMove);
+    window.removeEventListener('pointerup',onUp);
+  }
+  function onDown(e,mode){
+    e.preventDefault();
+    cropDrag={mode,startX:e.clientX,startY:e.clientY,startBox:getBoxRect()};
+    window.addEventListener('pointermove',onMove);
+    window.addEventListener('pointerup',onUp);
+  }
+  box.addEventListener('pointerdown',e=>{if(e.target.classList.contains('crop-handle'))return;onDown(e,'move');});
+  box.querySelectorAll('.crop-handle').forEach(h=>{
+    h.addEventListener('pointerdown',e=>{e.stopPropagation();onDown(e,h.dataset.h);});
+  });
+})();
+$('#cropCancelBtn').onclick=()=>{closeCropModal();};
+$('#cropSkipBtn').onclick=()=>{closeCropModal();if(lastRawFile)runOCR(lastRawFile);};
+$('#cropConfirmBtn').onclick=async()=>{
+  const img=$('#cropImg');
+  const r=getBoxRect();
+  const ir=img.getBoundingClientRect(), sr=$('#cropStage').getBoundingClientRect();
+  const scale=img.naturalWidth/ir.width;
+  const sx=(r.x-(ir.left-sr.left))*scale, sy=(r.y-(ir.top-sr.top))*scale;
+  const sw=r.w*scale, sh=r.h*scale;
+  const canvas=document.createElement('canvas');
+  canvas.width=sw;canvas.height=sh;
+  canvas.getContext('2d').drawImage(img,sx,sy,sw,sh,0,0,sw,sh);
+  const blob=await new Promise(res=>canvas.toBlob(res,'image/jpeg',0.92));
+  closeCropModal();
+  runOCR(new File([blob],'cropped.jpg',{type:'image/jpeg'}));
+};
+
 /* ── OCR ── */
 async function runClaudeOCR(file){
   // 이미지 → base64
@@ -767,12 +892,11 @@ async function runOCR(file){
     if(n>0){
       st.className='ocr done';st.textContent='✓ '+n+'개 항목 인식 완료. 다음 단계에서 정보를 확인해 주세요.';
     }else{
-      st.className='ocr err';st.textContent='⚠️ 인식하지 못했어요. 다음 단계에서 직접 입력해 주세요.';
+      st.className='ocr err';st.innerHTML='⚠️ 인식하지 못했어요. 다음 단계에서 직접 입력해 주세요.<button class="crop-retry" onclick="openCropModal(lastRawFile)">다시 크롭해서 재시도</button>';
     }
     setTimeout(()=>tryKopis(),300);
   }catch(e){
-    st.className='ocr err';st.textContent='⚠️ 일부만 인식됐어요. 다음 단계에서 직접 입력해 주세요.';
-    setTimeout(()=>gotoStep(2),2000);
+    st.className='ocr err';st.innerHTML='⚠️ 일부만 인식됐어요. 다음 단계에서 직접 입력해 주세요.<button class="crop-retry" onclick="openCropModal(lastRawFile)">다시 크롭해서 재시도</button>';
   }
 }
 
@@ -1067,10 +1191,10 @@ $('#findKopisBtn').onclick=async()=>{
 // 사진 업로드
 const shoot=$('#shoot'),tp=$('#ticketPhoto');
 shoot.addEventListener('click',e=>{if(e.target.closest('input'))return;tp.click();});
-tp.onchange=e=>{if(e.target.files[0])runOCR(e.target.files[0]);};
+tp.onchange=e=>{if(e.target.files[0])openCropModal(e.target.files[0]);};
 ['dragover','dragenter'].forEach(ev=>shoot.addEventListener(ev,e=>{e.preventDefault();shoot.classList.add('drag');}));
 ['dragleave','drop'].forEach(ev=>shoot.addEventListener(ev,e=>{e.preventDefault();shoot.classList.remove('drag');}));
-shoot.addEventListener('drop',e=>{const f=e.dataTransfer.files[0];if(f)runOCR(f);});
+shoot.addEventListener('drop',e=>{const f=e.dataTransfer.files[0];if(f)openCropModal(f);});
 
 // step1 → step2
 $('#to2Btn').onclick=()=>{gotoStep(2);if($('#fTitle').value.trim())tryKopis();};
