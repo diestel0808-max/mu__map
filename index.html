@@ -567,12 +567,10 @@ function simScore(a,b){
   let m=0;for(const c of b)if(a.includes(c))m++;return m/Math.max(a.length,b.length);
 }
 async function kopisSearch(title,date){
-  // 장르 접두어 제거
   const cleanTitle=(title||'').replace(/^(뮤지컬|연극|콘서트|오페라|무용|클래식) /,'').trim();
   const d=(date||'').replace(/[.\-\/]/g,'').slice(0,8);
   let st,ed;
   if(d&&d.length>=6){
-    // 날짜 기준 ±90일
     const dt=new Date(d.slice(0,4)+'-'+d.slice(4,6)+'-'+d.slice(6,8));
     const s2=new Date(dt);s2.setDate(s2.getDate()-90);
     const e2=new Date(dt);e2.setDate(e2.getDate()+90);
@@ -583,27 +581,23 @@ async function kopisSearch(title,date){
   }else{
     const yr=new Date().getFullYear();st=(yr-2)+'0101';ed=yr+'1231';
   }
-  // 공연명 앞 4자로 검색 (공백 없는 상태로)
-  const kw=encodeURIComponent(cleanTitle.replace(/ /g,'').slice(0,4));
-  const url=`/api/kopis?path=pblprfr&stdate=${st}&eddate=${ed}&shprfnm=${kw}&rows=10`;
+  // shprfnm 완전 제거 — 한글 파라미터가 KOPIS에서 INVALID 에러 발생
+  const url=`/api/kopis?path=pblprfr&stdate=${st}&eddate=${ed}&rows=10`;
   console.log('[KOPIS] 검색:', url, '/ 제목:', cleanTitle);
   try{
     const res=await fetch(url);
     const raw=await res.text();
-    console.log('[KOPIS] 응답:', raw.slice(0,200));
     const xml=new DOMParser().parseFromString(raw,'text/xml');
     const items=[...xml.querySelectorAll('db')];
     console.log('[KOPIS] 결과 수:', items.length);
-    if(!items.length) return [];
-    // 유사도 계산해서 후보 목록 반환
-    const candidates = items.map(item=>{
-      const nm=item.querySelector('prfnm')?.textContent||'';
-      const venue=item.querySelector('fcltynm')?.textContent||'';
-      const mt=item.querySelector('mt20id')?.textContent||'';
-      const poster=item.querySelector('poster')?.textContent||'';
-      return {nm, venue, mt, poster, score: simScore(nm, cleanTitle)};
-    }).sort((a,b)=>b.score-a.score);
-    return candidates;
+    if(!items.length)return [];
+    return items.map(item=>({
+      nm:item.querySelector('prfnm')?.textContent||'',
+      venue:item.querySelector('fcltynm')?.textContent||'',
+      mt:item.querySelector('mt20id')?.textContent||'',
+      poster:item.querySelector('poster')?.textContent||'',
+      score:simScore(item.querySelector('prfnm')?.textContent||'', cleanTitle)
+    })).sort((a,b)=>b.score-a.score);
   }catch(e){console.error('[KOPIS]',e);return [];}
 }
 
@@ -647,7 +641,7 @@ async function tryKopis(){
   try{candidates=await kopisSearch(title,date);}catch(e){}
 
   if(!candidates.length){
-    box.innerHTML='<div style="font-size:12px;color:var(--soft);padding:6px 0">공연 정보를 찾지 못했어요. 직접 입력해 주세요.</div>';
+    box.innerHTML='<div style="font-size:12px;color:var(--soft);padding:6px 0">일치하는 공연 정보가 없어요. 아래에서 포스터와 정보를 직접 입력해 주세요!</div>';
     return;
   }
 
@@ -662,18 +656,22 @@ async function tryKopis(){
   // 상위 3개 후보 표시
   const top=filtered.slice(0,3);
   const items=top.map((c,i)=>`
-    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);cursor:pointer" id="kopisCandidate${i}">
-      ${c.poster?`<img src="/api/kopis?path=poster&url=${encodeURIComponent(c.poster)}" style="width:36px;height:52px;object-fit:cover;border-radius:4px;flex-shrink:0" onerror="this.style.display='none'">`:'<div style="width:36px;height:52px;background:var(--chip);border-radius:4px;flex-shrink:0"></div>'}
-      <div>
-        <div style="font-size:13px;font-weight:700;color:var(--ink)">${esc(c.nm)}</div>
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);cursor:pointer;transition:.15s" id="kopisCandidate${i}" onmouseover="this.style.background='#f8f8f6'" onmouseout="this.style.background=''">
+      <div style="width:44px;height:64px;flex-shrink:0;border-radius:6px;overflow:hidden;background:var(--chip)">
+        ${c.poster?`<img src="/api/kopis?path=poster&url=${encodeURIComponent(c.poster)}" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML='🎭'">`:'<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:20px">🎭</div>'}
+      </div>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:3px">${esc(c.nm)}</div>
         <div style="font-size:11px;color:var(--soft)">${esc(c.venue)}</div>
       </div>
+      <div style="font-size:11px;color:var(--soft)">›</div>
     </div>`).join('');
 
   box.innerHTML=`<div class="kopis-result">
-    <div class="kr-t">🎭 공연 후보 — 맞는 공연을 선택해 주세요</div>
+    <div class="kr-t" style="margin-bottom:4px">이 공연이 맞나요?</div>
+    <div style="font-size:11px;color:var(--soft);margin-bottom:10px">맞는 공연을 선택하면 포스터가 자동으로 채워져요</div>
     ${items}
-    <div style="font-size:11px;color:var(--soft);margin-top:8px">없으면 건너뛰고 직접 입력하세요.</div>
+    <div style="font-size:11px;color:var(--soft);margin-top:10px;text-align:center">공연 정보가 없다면 아래에서 직접 입력해 주세요!</div>
   </div>`;
 
   top.forEach((c,i)=>{
