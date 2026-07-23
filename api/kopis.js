@@ -27,7 +27,7 @@ export default async function handler(req, res) {
   const ALLOWED_PATHS = ['pblprfr'];
   const safePath = ALLOWED_PATHS.find(p => path.startsWith(p)) ? path : 'pblprfr';
   const searchParams = new URLSearchParams({ ...params, service: KOPIS_KEY });
-  const kopisUrl = `https://www.kopis.or.kr/openApi/restful/${safePath}?${searchParams}`;
+  const kopisUrl = `http://kopis.or.kr/openApi/restful/${safePath}?${searchParams}`;
 
   try {
     const upstream = await fetch(kopisUrl, { headers: { 'User-Agent': 'mumap-proxy/1.0' } });
