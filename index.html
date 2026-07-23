@@ -1252,7 +1252,7 @@ let ongoingItems=[]; // {item,nm,venue,mt10id,from,to,dday,status,poster}
 let ongoingSort='date'; // 'date' | 'dist'
 let ongoingQuery='';
 let userCoords=null;
-let ongoingShowCount=20; // 한 번에 보여줄 개수, '더보기'로 20씩 증가
+let ongoingShowCount=10; // 한 번에 보여줄 개수, '더보기'로 10씩 증가
 const venueCoordsCache=new Map(); // "venue|area" -> {lat,lng} | null(실패)
 
 $('#tabBookBtn').onclick=()=>{
@@ -1267,19 +1267,19 @@ $('#tabOngoingBtn').onclick=()=>{
 
 $('#ongoingSearch').addEventListener('input',e=>{
   ongoingQuery=e.target.value.trim();
-  ongoingShowCount=20;
+  ongoingShowCount=10;
   renderOngoingList();
 });
 $('#sortDateBtn').onclick=()=>{
   ongoingSort='date';
-  ongoingShowCount=20;
+  ongoingShowCount=10;
   $('#sortDateBtn').classList.add('active');$('#sortDistBtn').classList.remove('active');
   renderOngoingList();
 };
 $('#sortDistBtn').onclick=async()=>{
   $('#sortDistBtn').classList.add('active');$('#sortDateBtn').classList.remove('active');
   ongoingSort='dist';
-  ongoingShowCount=20;
+  ongoingShowCount=10;
   if(!userCoords){
     const box=$('#ongoingList');
     box.innerHTML='<div class="empty"><div class="ico">📍</div>위치 정보를 확인하는 중…</div>';
@@ -1315,10 +1315,27 @@ async function fetchWithTimeout(url,ms){
   try{ return await fetch(url,{signal:ctrl.signal}); }
   finally{ clearTimeout(t); }
 }
+const LS_PREFIX='mumap_venue_geo:';
+function lsGetCoords(key){
+  try{
+    const raw=localStorage.getItem(LS_PREFIX+key);
+    if(raw===null)return undefined; // 캐시된 적 없음
+    return JSON.parse(raw); // {lat,lng} 또는 null(조회 실패했던 기록)
+  }catch(e){ return undefined; }
+}
+function lsSetCoords(key,coords){
+  try{ localStorage.setItem(LS_PREFIX+key, JSON.stringify(coords)); }catch(e){ /* 저장 실패해도 무시 */ }
+}
 async function getVenueCoords(venueName,area){
   const key=venueName+'|'+(area||'');
   if(!venueName)return null;
   if(venueCoordsCache.has(key))return venueCoordsCache.get(key);
+  // 브라우저에 예전에 저장해둔 좌표가 있으면 네트워크 요청 없이 즉시 사용
+  const cached=lsGetCoords(key);
+  if(cached!==undefined){
+    venueCoordsCache.set(key,cached);
+    return cached;
+  }
   try{
     const q=[venueName,area,'대한민국'].filter(Boolean).join(' ');
     const res=await fetchWithTimeout(`/api/kopis?path=geocode&q=${encodeURIComponent(q)}`,4000);
@@ -1331,9 +1348,11 @@ async function getVenueCoords(venueName,area){
       coords=(typeof data2.lat==='number'&&typeof data2.lng==='number')?{lat:data2.lat,lng:data2.lng}:null;
     }
     venueCoordsCache.set(key,coords);
+    lsSetCoords(key,coords);
     return coords;
   }catch(e){
     venueCoordsCache.set(key,null);
+    lsSetCoords(key,null);
     return null;
   }
 }
@@ -1462,7 +1481,7 @@ async function renderOngoingList(){
     </div>`;
   }).join('') + (hasMore?`<button class="wbtn" id="ongoingMoreBtn" style="margin:12px 16px 20px;width:calc(100% - 32px)">더보기</button>`:'');
   if(hasMore){
-    $('#ongoingMoreBtn').onclick=()=>{ ongoingShowCount+=20; renderOngoingList(); };
+    $('#ongoingMoreBtn').onclick=()=>{ ongoingShowCount+=10; renderOngoingList(); };
   }
 }
 
