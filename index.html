@@ -1326,16 +1326,34 @@ function lsGetCoords(key){
 function lsSetCoords(key,coords){
   try{ localStorage.setItem(LS_PREFIX+key, JSON.stringify(coords)); }catch(e){ /* 저장 실패해도 무시 */ }
 }
-async function tryPrfplcCoords(venueName){
+async function tryPrfplcCoords(venueName,area){
   try{
-    const res=await fetchWithTimeout(`/api/kopis?path=prfplc&cpage=1&rows=5&shprfnmfct=${encodeURIComponent(venueName)}`,4000);
+    // 1단계: 시설명으로 목록 검색 → mt10id(시설 ID) 확보 (이 응답엔 좌표가 없음)
+    const res=await fetchWithTimeout(`/api/kopis?path=prfplc&cpage=1&rows=10&shprfnmfct=${encodeURIComponent(venueName)}`,4000);
     const raw=await res.text();
     const xml=new DOMParser().parseFromString(raw,'text/xml');
     const dbs=[...xml.querySelectorAll('db')];
     if(!dbs.length)return null;
-    const best=dbs.find(d=>d.querySelector('fcltynm')?.textContent===venueName)||dbs[0];
-    const lat=parseFloat(best.querySelector('la')?.textContent);
-    const lng=parseFloat(best.querySelector('lo')?.textContent);
+    // 이름이 정확히 일치하거나, 지역명이 포함된 항목을 우선 사용 (동명 공연장 대응)
+    let best=dbs.find(d=>d.querySelector('fcltynm')?.textContent===venueName);
+    if(!best&&area)best=dbs.find(d=>area.includes(d.querySelector('sidonm')?.textContent||'\0'));
+    if(!best)best=dbs[0];
+    const mt10id=best.querySelector('mt10id')?.textContent;
+    if(!mt10id)return null;
+    // 2단계: 상세조회에서 좌표 확보 (필드명이 확실치 않아 여러 후보를 다 시도)
+    const dres=await fetchWithTimeout(`/api/kopis?path=prfplc/${mt10id}`,4000);
+    const draw=await dres.text();
+    const dxml=new DOMParser().parseFromString(draw,'text/xml');
+    const dbNode=dxml.querySelector('db')||dxml;
+    const pick=(...tags)=>{
+      for(const t of tags){
+        const v=dbNode.querySelector(t)?.textContent;
+        if(v&&!isNaN(parseFloat(v)))return parseFloat(v);
+      }
+      return NaN;
+    };
+    const lat=pick('la','latitude','gpsy','ycode','lat');
+    const lng=pick('lo','longitude','gpsx','xcode','lng','lon');
     if(isFinite(lat)&&isFinite(lng)&&lat&&lng)return {lat,lng};
     return null;
   }catch(e){
@@ -1354,7 +1372,7 @@ async function getVenueCoords(venueName,area){
   }
   try{
     // 1순위: KOPIS 공연시설 DB에서 직접 검색 (정확도 높음)
-    let coords=await tryPrfplcCoords(venueName);
+    let coords=await tryPrfplcCoords(venueName,area);
     // 2순위: 실패하면 OpenStreetMap Nominatim으로 보완
     if(!coords){
       const q=[venueName,area,'대한민국'].filter(Boolean).join(' ');
