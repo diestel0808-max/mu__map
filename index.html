@@ -358,7 +358,7 @@ button,input,textarea,select{font-family:inherit}
       <div class="f"><label>장소</label><input id="fVenue" placeholder="공연장"></div>
     </div>
     <div class="g2">
-      <div class="f"><label>날짜</label><input id="fDate" placeholder="2025.04.07"></div>
+      <div class="f"><label>날짜</label><input id="fDate" type="date"></div>
       <div class="f"><label>시간</label><input id="fTime" placeholder="14:30"></div>
     </div>
     <div class="g3">
@@ -888,7 +888,7 @@ function openEdit(id){
 function closeEditor(){$('#editor').classList.remove('open');}
 function clearForm(){['fTitle','fVenue','fDate','fTime','fFloor','fRow','fSeat','fCast','fReview'].forEach(id=>$(('#'+id)).value='');$('#fType').value='뮤지컬';}
 function fillForm(t){
-  $('#fTitle').value=t.title||'';$('#fVenue').value=t.venue||'';$('#fDate').value=t.date||'';
+  $('#fTitle').value=t.title||'';$('#fVenue').value=t.venue||'';$('#fDate').value=(t.date||'').replace(/\./g,'-');
   $('#fTime').value=t.time||'';$('#fFloor').value=t.floor||'';$('#fRow').value=t.row||'';
   $('#fSeat').value=t.seat||'';$('#fCast').value=t.cast||'';$('#fReview').value=t.review||'';
   $('#fType').value=t.type||'뮤지컬';
@@ -975,7 +975,7 @@ async function save(){
     id:editId||uid(),
     title:$('#fTitle').value.trim(),type:$('#fType').value,
     venue:$('#fVenue').value.trim(),cast:$('#fCast').value.trim(),
-    date:$('#fDate').value.trim(),time:$('#fTime').value.trim(),
+    date:$('#fDate').value.trim().replace(/-/g,'.'),time:$('#fTime').value.trim(),
     floor:$('#fFloor').value.trim(),row:$('#fRow').value.trim(),seat:$('#fSeat').value.trim(),
     review:$('#fReview').value.trim(),rating:draft.rating,
     color:draft.color,poster:draft.poster,extras:[...draft.extras],
