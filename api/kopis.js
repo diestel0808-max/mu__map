@@ -29,15 +29,15 @@ export default async function handler(req, res) {
   }
 
   // KOPIS API 호출
-  const safePath = path.startsWith('pblprfr') ? path : 'pblprfr';
-  const isDetail = /^pblprfr\/.+/.test(safePath); // 상세조회는 /pblprfr/{mt20id}
+  const safePath = (path.startsWith('pblprfr') || path.startsWith('prfplc')) ? path : 'pblprfr';
+  const isDetail = /^(pblprfr|prfplc)\/.+/.test(safePath); // 상세조회는 /pblprfr/{mt20id} 또는 /prfplc/{mt10id}
 
   let kopisUrl;
   if (isDetail) {
     // 상세조회는 stdate/eddate 불필요
     kopisUrl = `https://kopis.or.kr/openApi/restful/${safePath}?service=${KOPIS_KEY}`;
   } else {
-    const { stdate, eddate, cpage = '1', rows = '20', shprfnm } = kopisParams;
+    const { stdate, eddate, cpage = '1', rows = '20', shprfnm, shcate } = kopisParams;
     if(!stdate || !eddate){
       return res.status(400).json({ error: 'stdate, eddate 필요' });
     }
@@ -46,6 +46,10 @@ export default async function handler(req, res) {
     // shprfnm(제목)이 있으면 KOPIS 서버측 검색 필터로 추가 — 반드시 encodeURIComponent로 재인코딩
     if(shprfnm){
       kopisUrl += `&shprfnm=${encodeURIComponent(shprfnm)}`;
+    }
+    // shcate(장르코드, 예: GGGA=뮤지컬)가 있으면 장르 필터 추가
+    if(shcate){
+      kopisUrl += `&shcate=${encodeURIComponent(shcate)}`;
     }
   }
   console.log('[KOPIS] URL:', kopisUrl.replace(KOPIS_KEY, '***'));
