@@ -71,8 +71,8 @@ button,input,textarea,select{font-family:inherit}
 .empty .h{font-size:17px;font-weight:800;color:var(--ink);margin-bottom:6px}
 .empty-btn{background:var(--ink);color:#fff;border:none;border-radius:12px;padding:12px 24px;font-weight:700;cursor:pointer;margin-top:14px}
 .hcard{background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 4px 14px -8px rgba(0,0,0,.2);
-  display:flex;cursor:pointer;min-height:100px}
-.hcard .poster{width:70px;flex-shrink:0;background:#23232c;position:relative}
+  display:flex;cursor:pointer;min-height:132px}
+.hcard .poster{width:96px;flex-shrink:0;background:#23232c;position:relative}
 .hcard .poster img{width:100%;height:100%;object-fit:cover;display:block}
 .hcard .poster .nop{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
   color:rgba(255,255,255,.3);font-size:9px;font-family:'Space Mono',monospace;letter-spacing:.1em;text-align:center}
@@ -1371,8 +1371,10 @@ async function tryPrfplcCoords(venueName,area){
     return null;
   }
 }
+let lastUsedFallback=false;
 async function getVenueCoords(venueName,area){
   const key=venueName+'|'+(area||'');
+  lastUsedFallback=false;
   if(!venueName)return null;
   if(venueCoordsCache.has(key))return venueCoordsCache.get(key);
   // 브라우저에 예전에 저장해둔 좌표가 있으면 네트워크 요청 없이 즉시 사용
@@ -1382,10 +1384,11 @@ async function getVenueCoords(venueName,area){
     return cached;
   }
   try{
-    // 1순위: KOPIS 공연시설 DB에서 직접 검색 (정확도 높음)
+    // 1순위: KOPIS 공연시설 DB에서 직접 검색 (정확도 높음, 빠름)
     let coords=await tryPrfplcCoords(venueName,area);
     // 2순위: 실패하면 OpenStreetMap Nominatim으로 보완 (원래 이름 → 지역태그 뗀 핵심 이름 순으로 시도)
     if(!coords){
+      lastUsedFallback=true;
       const core=coreVenueName(venueName);
       const candidates=[
         [venueName,area,'대한민국'].filter(Boolean).join(' '),
@@ -1493,22 +1496,17 @@ async function renderOngoingList(){
     const keyOf=x=>x.venue+'|'+(x.area||'');
     const uniqueKeys=[...new Set(list.map(keyOf))];
     const toDo=uniqueKeys.filter(k=>!venueCoordsCache.has(k));
-    // 표시하려는 개수(ongoingShowCount)만큼 좌표가 확보될 때까지만 순차 지오코딩하되,
-    // 실패(못 찾은 공연장)가 많아도 하염없이 돌지 않도록 최대 시도 횟수를 제한
-    const maxChecks=Math.min(toDo.length, ongoingShowCount*2+10);
-    let covered=list.filter(x=>{const c=venueCoordsCache.get(keyOf(x));return c;}).length;
-    let i=0;
-    while(covered<ongoingShowCount && i<maxChecks){
+    // KOPIS 자체 DB(prfplc)는 빠르므로 표시개수와 무관하게 전체 공연장을 확인해 정확한 순위를 냄.
+    // 정말 못 찾아서 Nominatim으로 넘어간 경우에만 요청 제한 준수를 위해 딜레이를 둠.
+    for(let i=0;i<toDo.length;i++){
       if(gen!==ongoingRenderGen)return; // 그 사이 다른 렌더(예: 기간순 전환)가 시작됐으면 즉시 중단
       const key=toDo[i];
-      const pct=Math.round(((i+1)/maxChecks)*100);
+      const pct=Math.round(((i+1)/toDo.length)*100);
       box.innerHTML=`<div class="empty"><div class="ico">📍</div>공연장 위치 확인 중…<div class="progress-track"><div class="progress-bar" style="width:${pct}%"></div></div></div>`;
       const idx=key.lastIndexOf('|');
-      const c=await getVenueCoords(key.slice(0,idx),key.slice(idx+1));
+      await getVenueCoords(key.slice(0,idx),key.slice(idx+1));
       if(gen!==ongoingRenderGen)return; // 대기 중 전환됐으면 결과 반영하지 않고 중단
-      if(c)covered+=list.filter(x=>keyOf(x)===key).length;
-      i++;
-      await new Promise(r=>setTimeout(r,250));
+      if(lastUsedFallback)await new Promise(r=>setTimeout(r,250));
     }
     if(gen!==ongoingRenderGen)return;
     list.forEach(x=>{
