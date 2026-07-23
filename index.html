@@ -131,7 +131,10 @@ button,input,textarea,select{font-family:inherit}
   background:#fff;border-radius:10px;padding:10px 12px;transition:.15s}
 .f input:focus,.f textarea:focus,.f select:focus{outline:none;border-color:var(--ink)}
 .f textarea{resize:vertical;min-height:72px;line-height:1.5}
+input[type="date"],input[type="time"]{-webkit-min-logical-width:0;min-width:0;padding-right:6px}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.g2>.f,.g3>.f{min-width:0}
+.g2 input,.g3 input{min-width:0;max-width:100%}
 .g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
 .g2 .f,.g3 .f{margin-bottom:0}
 
@@ -1421,7 +1424,9 @@ async function loadOngoingMusicals(){
   }
 }
 
+let ongoingRenderGen=0;
 async function renderOngoingList(){
+  const gen=++ongoingRenderGen; // 이 호출만의 세대번호. 도중에 다른 렌더가 시작되면 이 값이 낡은 값이 됨
   const box=$('#ongoingList');
   let list=ongoingItems.filter(x=>!ongoingQuery||x.nm.toLowerCase().includes(ongoingQuery.toLowerCase()));
   // 가까운순은 "오늘 기준 진행 중"인 공연만 대상으로 함 (개막 예정 제외)
@@ -1445,15 +1450,18 @@ async function renderOngoingList(){
     let covered=list.filter(x=>{const c=venueCoordsCache.get(keyOf(x));return c;}).length;
     let i=0;
     while(covered<ongoingShowCount && i<maxChecks){
+      if(gen!==ongoingRenderGen)return; // 그 사이 다른 렌더(예: 기간순 전환)가 시작됐으면 즉시 중단
       const key=toDo[i];
       const pct=Math.round(((i+1)/maxChecks)*100);
       box.innerHTML=`<div class="empty"><div class="ico">📍</div>공연장 위치 확인 중…<div class="progress-track"><div class="progress-bar" style="width:${pct}%"></div></div></div>`;
       const idx=key.lastIndexOf('|');
       const c=await getVenueCoords(key.slice(0,idx),key.slice(idx+1));
+      if(gen!==ongoingRenderGen)return; // 대기 중 전환됐으면 결과 반영하지 않고 중단
       if(c)covered+=list.filter(x=>keyOf(x)===key).length;
       i++;
       await new Promise(r=>setTimeout(r,250));
     }
+    if(gen!==ongoingRenderGen)return;
     list.forEach(x=>{
       const c=venueCoordsCache.get(keyOf(x));
       x._dist=c?haversine(userCoords.lat,userCoords.lng,c.lat,c.lng):Infinity;
@@ -1463,6 +1471,7 @@ async function renderOngoingList(){
     // 기간순: 폐막(종료)이 얼마 안 남은 순서로 정렬
     list=[...list].sort((a,b)=>a.closeDday-b.closeDday);
   }
+  if(gen!==ongoingRenderGen)return;
   const hasMore = list.length>ongoingShowCount || (ongoingSort==='dist' && uniqueKeysRemain());
   function uniqueKeysRemain(){
     const keyOf=x=>x.venue+'|'+(x.area||'');
