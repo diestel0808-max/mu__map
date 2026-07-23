@@ -50,6 +50,16 @@ button,input,textarea,select{font-family:inherit}
 .ongoing-title{font-size:14px;font-weight:700;color:var(--ink);margin-bottom:4px}
 .ongoing-meta{font-size:12px;color:var(--soft);line-height:1.6}
 .ongoing-dday{font-size:11px;font-weight:700;color:var(--accent);margin-top:4px}
+.ongoing-controls{position:sticky;top:110px;z-index:18;background:var(--bg);
+  padding:10px 16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;border-bottom:1px solid var(--line)}
+#ongoingSearch{flex:1;min-width:140px;padding:9px 12px;border:1px solid var(--line2);
+  border-radius:20px;font-size:13px;background:#fff;color:var(--ink)}
+#ongoingSearch:focus{outline:none;border-color:var(--ink)}
+.sort-toggle{display:flex;border:1px solid var(--line2);border-radius:20px;overflow:hidden;flex-shrink:0}
+.sort-btn{padding:9px 12px;font-size:12px;font-weight:700;color:var(--soft);
+  background:#fff;border:none;cursor:pointer;white-space:nowrap}
+.sort-btn.active{background:var(--ink);color:#fff}
+.ongoing-dist{font-size:11px;color:var(--soft);margin-top:2px}
 
 /* LIST */
 .list{padding:12px 12px 100px;display:flex;flex-direction:column;gap:10px}
@@ -339,11 +349,20 @@ button,input,textarea,select{font-family:inherit}
     <button class="ibtn" id="logoutBtn" title="로그아웃">⏻</button>
   </div>
   <div class="tabbar">
-    <button class="tab-btn active" id="tabBookBtn">티켓북</button>
-    <button class="tab-btn" id="tabOngoingBtn">진행중</button>
+    <button class="tab-btn active" id="tabBookBtn">Ticket Book</button>
+    <button class="tab-btn" id="tabOngoingBtn">Ongoing</button>
   </div>
   <div class="list" id="list"></div>
-  <div class="list" id="ongoingList" style="display:none"></div>
+  <div id="ongoingWrap" style="display:none">
+    <div class="ongoing-controls" id="ongoingControls">
+      <input id="ongoingSearch" type="text" placeholder="공연명 검색">
+      <div class="sort-toggle">
+        <button class="sort-btn active" id="sortDateBtn">기간순</button>
+        <button class="sort-btn" id="sortDistBtn">가까운순</button>
+      </div>
+    </div>
+    <div class="list" id="ongoingList"></div>
+  </div>
 </div>
 
 <!-- ===== EDITOR ===== -->
@@ -1227,35 +1246,108 @@ document.querySelectorAll('#stars span').forEach(st=>{
 // 편집 모드
 $('#editPillBtn').onclick=()=>{editing=!editing;$('#editPillBtn').classList.toggle('solid',editing);render();};
 
-// 탭바 (티켓북 / 진행중)
+// 탭바 (Ticket Book / Ongoing)
 let ongoingLoaded=false;
+let ongoingItems=[]; // {item,nm,venue,mt10id,from,to,dday,status,poster}
+let ongoingSort='date'; // 'date' | 'dist'
+let ongoingQuery='';
+let userCoords=null;
+const venueCoordsCache=new Map(); // mt10id -> {lat,lng} | null(실패)
+
 $('#tabBookBtn').onclick=()=>{
   $('#tabBookBtn').classList.add('active');$('#tabOngoingBtn').classList.remove('active');
-  $('#list').style.display='';$('#ongoingList').style.display='none';
+  $('#list').style.display='';$('#ongoingWrap').style.display='none';
 };
 $('#tabOngoingBtn').onclick=()=>{
   $('#tabOngoingBtn').classList.add('active');$('#tabBookBtn').classList.remove('active');
-  $('#list').style.display='none';$('#ongoingList').style.display='';
+  $('#list').style.display='none';$('#ongoingWrap').style.display='';
   if(!ongoingLoaded)loadOngoingMusicals();
 };
+
+$('#ongoingSearch').addEventListener('input',e=>{
+  ongoingQuery=e.target.value.trim();
+  renderOngoingList();
+});
+$('#sortDateBtn').onclick=()=>{
+  ongoingSort='date';
+  $('#sortDateBtn').classList.add('active');$('#sortDistBtn').classList.remove('active');
+  renderOngoingList();
+};
+$('#sortDistBtn').onclick=async()=>{
+  $('#sortDistBtn').classList.add('active');$('#sortDateBtn').classList.remove('active');
+  ongoingSort='dist';
+  if(!userCoords){
+    const box=$('#ongoingList');
+    box.innerHTML='<div class="empty"><div class="ico">📍</div>위치 정보를 확인하는 중…</div>';
+    try{
+      userCoords=await new Promise((res,rej)=>{
+        if(!navigator.geolocation)return rej(new Error('geolocation 미지원'));
+        navigator.geolocation.getCurrentPosition(
+          p=>res({lat:p.coords.latitude,lng:p.coords.longitude}),
+          err=>rej(err),
+          {timeout:8000}
+        );
+      });
+    }catch(e){
+      ongoingSort='date';
+      $('#sortDateBtn').classList.add('active');$('#sortDistBtn').classList.remove('active');
+      box.innerHTML='<div class="empty"><div class="ico">📍</div>위치 정보를 가져올 수 없어요. 브라우저 위치 권한을 허용해 주세요.</div>';
+      setTimeout(()=>renderOngoingList(),1500);
+      return;
+    }
+  }
+  renderOngoingList();
+};
+
+function haversine(lat1,lng1,lat2,lng2){
+  const R=6371;
+  const dLat=(lat2-lat1)*Math.PI/180, dLng=(lng2-lng1)*Math.PI/180;
+  const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+async function getVenueCoords(mt10id){
+  if(!mt10id)return null;
+  if(venueCoordsCache.has(mt10id))return venueCoordsCache.get(mt10id);
+  try{
+    const res=await fetch(`/api/kopis?path=prfplc/${mt10id}`);
+    const raw=await res.text();
+    const xml=new DOMParser().parseFromString(raw,'text/xml');
+    const lat=parseFloat(xml.querySelector('la')?.textContent);
+    const lng=parseFloat(xml.querySelector('lo')?.textContent);
+    const coords=(isFinite(lat)&&isFinite(lng)&&lat&&lng)?{lat,lng}:null;
+    venueCoordsCache.set(mt10id,coords);
+    return coords;
+  }catch(e){
+    venueCoordsCache.set(mt10id,null);
+    return null;
+  }
+}
+
 async function loadOngoingMusicals(){
   const box=$('#ongoingList');
-  box.innerHTML='<div class="empty"><div class="ico">🎭</div>지금 공연 중인 작품을 불러오는 중…</div>';
-  const ymd=new Date().toISOString().slice(0,10).replace(/-/g,'');
+  box.innerHTML='<div class="empty"><div class="ico">🎭</div>뮤지컬 정보를 불러오는 중…</div>';
+  const today=new Date();
+  const toYmd=d=>d.toISOString().slice(0,10).replace(/-/g,'');
+  const stStr=toYmd(today);
+  const edD=new Date(today);edD.setDate(edD.getDate()+90);
+  const edStr=toYmd(edD);
   try{
-    // stdate=eddate=오늘 → 공연기간에 오늘이 포함되는(=진행중인) 공연만 조회
-    // 뮤지컬(GGGA) + 연극(AAAA) 두 장르를 각각 조회해서 합침
-    const genres=['GGGA','AAAA'];
-    const results=await Promise.all(genres.map(async g=>{
-      const url=`/api/kopis?path=pblprfr&stdate=${ymd}&eddate=${ymd}&rows=50&shcate=${g}`;
+    // 오늘 ~ 90일 후 범위로 뮤지컬(GGGA)을 페이지네이션으로 끝까지 조회
+    // (진행중인 공연 + 90일 내 개막 예정인 공연을 함께 확보)
+    let items=[];
+    for(let cpage=1;cpage<=10;cpage++){
+      const rows=100;
+      const url=`/api/kopis?path=pblprfr&stdate=${stStr}&eddate=${edStr}&cpage=${cpage}&rows=${rows}&shcate=GGGA`;
       const res=await fetch(url);
       const raw=await res.text();
       const xml=new DOMParser().parseFromString(raw,'text/xml');
-      return [...xml.querySelectorAll('db')];
-    }));
-    // mt20id 기준 중복 제거 후 합치기
+      const page=[...xml.querySelectorAll('db')];
+      items=items.concat(page);
+      if(page.length<rows)break; // 마지막 페이지
+    }
+    // mt20id 기준 중복 제거
     const seen=new Set();
-    const items=results.flat().filter(item=>{
+    items=items.filter(item=>{
       const id=item.querySelector('mt20id')?.textContent||'';
       if(id&&seen.has(id))return false;
       if(id)seen.add(id);
@@ -1263,31 +1355,67 @@ async function loadOngoingMusicals(){
     });
     ongoingLoaded=true;
     if(!items.length){
-      box.innerHTML='<div class="empty"><div class="ico">🎭</div>현재 진행 중인 공연 정보가 없어요.</div>';
+      ongoingItems=[];
+      box.innerHTML='<div class="empty"><div class="ico">🎭</div>현재 진행 중이거나 개막 예정인 뮤지컬 정보가 없어요.</div>';
       return;
     }
-    box.innerHTML=items.map(item=>{
+    const todayMid=new Date(today.toDateString());
+    const toDate=s=>new Date(s.replace(/\./g,'-')+'T00:00:00');
+    const dday=s=>Math.round((toDate(s)-todayMid)/86400000);
+    ongoingItems=items.map(item=>{
       const nm=item.querySelector('prfnm')?.textContent||'';
       const venue=item.querySelector('fcltynm')?.textContent||'';
+      const mt10id=item.querySelector('mt10id')?.textContent||'';
       const from=item.querySelector('prfpdfrom')?.textContent||'';
       const to=item.querySelector('prfpdto')?.textContent||'';
       const poster=item.querySelector('poster')?.textContent||'';
-      const posterUrl=poster?`/api/kopis?path=poster&url=${encodeURIComponent(poster)}`:'';
-      return `<div class="ongoing-card">
-        ${posterUrl
-          ?`<img class="ongoing-poster" src="${posterUrl}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ongoing-poster',style:'display:flex;align-items:center;justify-content:center;font-size:20px',textContent:'🎭'}))">`
-          :`<div class="ongoing-poster" style="display:flex;align-items:center;justify-content:center;font-size:20px">🎭</div>`}
-        <div class="ongoing-info">
-          <div class="ongoing-title">${esc(nm)}</div>
-          <div class="ongoing-meta">${esc(venue)}</div>
-          <div class="ongoing-meta">${esc(from)} ~ ${esc(to)}</div>
-          <div class="ongoing-dday">공연 중</div>
-        </div>
-      </div>`;
-    }).join('');
+      const d=dday(from);
+      return {nm,venue,mt10id,from,to,poster,dday:d,status:d>0?'upcoming':'ongoing'};
+    }).filter(x=>x.from&&x.to);
+    renderOngoingList();
   }catch(e){
     box.innerHTML='<div class="empty"><div class="ico">⚠️</div>공연 정보를 불러오지 못했어요.</div>';
   }
+}
+
+async function renderOngoingList(){
+  const box=$('#ongoingList');
+  let list=ongoingItems.filter(x=>!ongoingQuery||x.nm.toLowerCase().includes(ongoingQuery.toLowerCase()));
+  if(!list.length){
+    box.innerHTML=`<div class="empty"><div class="ico">🔍</div>${ongoingQuery?'검색 결과가 없어요.':'현재 진행 중이거나 개막 예정인 뮤지컬 정보가 없어요.'}</div>`;
+    return;
+  }
+  if(ongoingSort==='dist'&&userCoords){
+    box.innerHTML='<div class="empty"><div class="ico">📍</div>거리 정보를 계산하는 중…</div>';
+    // 화면에 보일 항목들의 공연장 좌표를 병렬로 조회 (캐시 재사용)
+    await Promise.all(list.map(async x=>{
+      const c=await getVenueCoords(x.mt10id);
+      x._dist=c?haversine(userCoords.lat,userCoords.lng,c.lat,c.lng):Infinity;
+    }));
+    list=[...list].sort((a,b)=>a._dist-b._dist);
+  }else{
+    list=[...list].sort((a,b)=>{
+      if(a.status!==b.status)return a.status==='ongoing'?-1:1;
+      return a.dday-b.dday;
+    });
+  }
+  box.innerHTML=list.map(x=>{
+    const posterUrl=x.poster?`/api/kopis?path=poster&url=${encodeURIComponent(x.poster)}`:'';
+    const badge=x.status==='ongoing'?'공연 중':`개막 D-${x.dday}`;
+    const distLine=(ongoingSort==='dist'&&isFinite(x._dist))?`<div class="ongoing-dist">📍 ${x._dist.toFixed(1)}km</div>`:'';
+    return `<div class="ongoing-card">
+      ${posterUrl
+        ?`<img class="ongoing-poster" src="${posterUrl}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ongoing-poster',style:'display:flex;align-items:center;justify-content:center;font-size:20px',textContent:'🎭'}))">`
+        :`<div class="ongoing-poster" style="display:flex;align-items:center;justify-content:center;font-size:20px">🎭</div>`}
+      <div class="ongoing-info">
+        <div class="ongoing-title">${esc(x.nm)}</div>
+        <div class="ongoing-meta">${esc(x.venue)}</div>
+        <div class="ongoing-meta">${esc(x.from)} ~ ${esc(x.to)}</div>
+        <div class="ongoing-dday">${badge}</div>
+        ${distLine}
+      </div>
+    </div>`;
+  }).join('');
 }
 
 
