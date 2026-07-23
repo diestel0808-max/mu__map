@@ -22,7 +22,12 @@ export default async function handler(req, res) {
     if(!q) return res.status(400).json({ error: 'q(검색어) 필요' });
     try{
       const geoUrl = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=kr&q=${encodeURIComponent(q)}`;
-      const r = await fetch(geoUrl, { headers: { 'User-Agent': 'mu-map-ticketbook/1.0 (contact: mu-map-app@example.com)' } });
+      const ctrl = new AbortController();
+      const t = setTimeout(()=>ctrl.abort(), 4000);
+      let r;
+      try{
+        r = await fetch(geoUrl, { headers: { 'User-Agent': 'mu-map-ticketbook/1.0 (contact: mu-map-app@example.com)' }, signal: ctrl.signal });
+      }finally{ clearTimeout(t); }
       const data = await r.json();
       console.log('[GEOCODE]', q, '->', JSON.stringify(data).slice(0,150));
       if(!Array.isArray(data) || !data.length) return res.status(200).json({});
