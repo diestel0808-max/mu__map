@@ -435,7 +435,6 @@ input[type="date"],input[type="time"]{-webkit-min-logical-width:0;min-width:0;pa
       <div class="sh-t">공연 정보 확인</div>
       <div class="sh-s">인식된 정보를 확인하고 수정해 주세요</div>
     </div>
-    <div class="kopis-box" id="kopisBox"></div>
     <div class="f"><label>공연명</label><input id="fTitle" placeholder="예: 오페라의 유령"></div>
     <div class="g2">
       <div class="f"><label>구분</label>
@@ -454,7 +453,8 @@ input[type="date"],input[type="time"]{-webkit-min-logical-width:0;min-width:0;pa
     </div>
     <div class="f"><label>캐스팅 (쉼표로 구분)</label><input id="fCast" placeholder="배우 이름, 배우 이름"></div>
     <button type="button" id="findKopisBtn" style="width:100%;background:#fff;border:1px solid var(--line2);border-radius:10px;padding:10px;font-size:13px;font-weight:700;cursor:pointer;color:var(--ink);margin-bottom:4px">🔍 공연 정보 찾기</button>
-    <div class="kopis-box" id="kopisBox2"></div>
+    <div style="font-size:11px;color:var(--soft);margin-bottom:8px">공연 정보가 나타나지 않으면 공연 본 날짜와 공연명을 정확히 입력해 주세요.</div>
+    <div class="kopis-box" id="kopisBox"></div>
 
     <div class="lab" id="posterLab">앞면 포스터</div>
     <div class="poster-box" id="posterBox">
@@ -1221,16 +1221,10 @@ $('#flipCard').addEventListener('click',()=>$('#flipCard').classList.toggle('fli
 
 // 공연 정보 찾기 버튼 (step2에서 수동 검색)
 $('#findKopisBtn').onclick=async()=>{
-  const box=$('#kopisBox2');
+  const box=$('#kopisBox');
   const title=$('#fTitle').value.trim();
   if(!title){box.innerHTML='<div style="font-size:12px;color:#c0392b;padding:6px 0">공연명을 먼저 입력해 주세요.</div>';return;}
-  // kopisBox를 kopisBox2로 임시 교체
-  const origBox=$('#kopisBox');
-  origBox.id='kopisBox_bak';
-  box.id='kopisBox';
   await tryKopis();
-  box.id='kopisBox2';
-  origBox.id='kopisBox';
 };
 
 // 사진 업로드
@@ -1332,6 +1326,22 @@ function lsGetCoords(key){
 function lsSetCoords(key,coords){
   try{ localStorage.setItem(LS_PREFIX+key, JSON.stringify(coords)); }catch(e){ /* 저장 실패해도 무시 */ }
 }
+async function tryPrfplcCoords(venueName){
+  try{
+    const res=await fetchWithTimeout(`/api/kopis?path=prfplc&cpage=1&rows=5&shprfnmfct=${encodeURIComponent(venueName)}`,4000);
+    const raw=await res.text();
+    const xml=new DOMParser().parseFromString(raw,'text/xml');
+    const dbs=[...xml.querySelectorAll('db')];
+    if(!dbs.length)return null;
+    const best=dbs.find(d=>d.querySelector('fcltynm')?.textContent===venueName)||dbs[0];
+    const lat=parseFloat(best.querySelector('la')?.textContent);
+    const lng=parseFloat(best.querySelector('lo')?.textContent);
+    if(isFinite(lat)&&isFinite(lng)&&lat&&lng)return {lat,lng};
+    return null;
+  }catch(e){
+    return null;
+  }
+}
 async function getVenueCoords(venueName,area){
   const key=venueName+'|'+(area||'');
   if(!venueName)return null;
@@ -1343,15 +1353,19 @@ async function getVenueCoords(venueName,area){
     return cached;
   }
   try{
-    const q=[venueName,area,'대한민국'].filter(Boolean).join(' ');
-    const res=await fetchWithTimeout(`/api/kopis?path=geocode&q=${encodeURIComponent(q)}`,4000);
-    const data=await res.json();
-    let coords=(typeof data.lat==='number'&&typeof data.lng==='number')?{lat:data.lat,lng:data.lng}:null;
-    // 지역명 포함 검색이 실패하면 공연장 이름만으로 한 번 더 시도
-    if(!coords&&area){
-      const res2=await fetchWithTimeout(`/api/kopis?path=geocode&q=${encodeURIComponent(venueName+' 대한민국')}`,4000);
-      const data2=await res2.json();
-      coords=(typeof data2.lat==='number'&&typeof data2.lng==='number')?{lat:data2.lat,lng:data2.lng}:null;
+    // 1순위: KOPIS 공연시설 DB에서 직접 검색 (정확도 높음)
+    let coords=await tryPrfplcCoords(venueName);
+    // 2순위: 실패하면 OpenStreetMap Nominatim으로 보완
+    if(!coords){
+      const q=[venueName,area,'대한민국'].filter(Boolean).join(' ');
+      const res=await fetchWithTimeout(`/api/kopis?path=geocode&q=${encodeURIComponent(q)}`,4000);
+      const data=await res.json();
+      coords=(typeof data.lat==='number'&&typeof data.lng==='number')?{lat:data.lat,lng:data.lng}:null;
+      if(!coords&&area){
+        const res2=await fetchWithTimeout(`/api/kopis?path=geocode&q=${encodeURIComponent(venueName+' 대한민국')}`,4000);
+        const data2=await res2.json();
+        coords=(typeof data2.lat==='number'&&typeof data2.lng==='number')?{lat:data2.lat,lng:data2.lng}:null;
+      }
     }
     venueCoordsCache.set(key,coords);
     lsSetCoords(key,coords);
