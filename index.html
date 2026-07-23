@@ -590,14 +590,19 @@ async function kopisSearch(title,date){
     const xml=new DOMParser().parseFromString(raw,'text/xml');
     const items=[...xml.querySelectorAll('db')];
     console.log('[KOPIS] 결과 수:', items.length);
+    if(items.length>0){
+      console.log('[KOPIS] 첫번째 항목 태그들:', items[0].innerHTML.slice(0,300));
+    }
     if(!items.length)return [];
-    return items.map(item=>({
-      nm:item.querySelector('prfnm')?.textContent||'',
-      venue:item.querySelector('fcltynm')?.textContent||'',
-      mt:item.querySelector('mt20id')?.textContent||'',
-      poster:item.querySelector('poster')?.textContent||'',
-      score:simScore(item.querySelector('prfnm')?.textContent||'', cleanTitle)
-    })).sort((a,b)=>b.score-a.score);
+    return items.map(item=>{
+      // 태그명이 다를 수 있어서 여러 방식으로 시도
+      const nm=item.querySelector('prfnm')?.textContent||item.querySelector('PRFNM')?.textContent||'';
+      const venue=item.querySelector('fcltynm')?.textContent||item.querySelector('FCLTYNM')?.textContent||'';
+      const mt=item.querySelector('mt20id')?.textContent||item.querySelector('MT20ID')?.textContent||'';
+      const poster=item.querySelector('poster')?.textContent||item.querySelector('POSTER')?.textContent||'';
+      console.log('[KOPIS] 파싱:', {nm, venue, mt, poster:poster.slice(0,50)});
+      return {nm, venue, mt, poster, score:simScore(nm, cleanTitle)};
+    }).sort((a,b)=>b.score-a.score);
   }catch(e){console.error('[KOPIS]',e);return [];}
 }
 
