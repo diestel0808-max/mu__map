@@ -16,6 +16,22 @@ export default async function handler(req, res) {
 
   console.log('[KOPIS] path:', path, '/ params:', JSON.stringify(kopisParams));
 
+  // 지오코딩 프록시 (공연장 이름 → 좌표, OpenStreetMap Nominatim 사용, KOPIS 서비스키 불필요)
+  if(path === 'geocode'){
+    const { q } = kopisParams;
+    if(!q) return res.status(400).json({ error: 'q(검색어) 필요' });
+    try{
+      const geoUrl = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=kr&q=${encodeURIComponent(q)}`;
+      const r = await fetch(geoUrl, { headers: { 'User-Agent': 'mu-map-ticketbook/1.0 (contact: mu-map-app@example.com)' } });
+      const data = await r.json();
+      console.log('[GEOCODE]', q, '->', JSON.stringify(data).slice(0,150));
+      if(!Array.isArray(data) || !data.length) return res.status(200).json({});
+      return res.status(200).json({ lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) });
+    }catch(e){
+      return res.status(502).json({ error: 'geocode 실패: ' + e.message });
+    }
+  }
+
   // 포스터 프록시
   if(path === 'poster' && posterUrl){
     try{
