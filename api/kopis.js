@@ -5,8 +5,13 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
+  // 캐시 방지
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+
   const KOPIS_KEY = process.env.KOPIS_API_KEY;
   if (!KOPIS_KEY) return res.status(500).json({ error: 'KOPIS_API_KEY 환경변수가 설정되지 않았습니다.' });
+  console.log('[KOPIS] KEY 존재:', !!KOPIS_KEY, '/ URL prefix: http://kopis.or.kr');
 
   const { path = 'pblprfr', url: posterUrl, ...params } = req.query;
 
