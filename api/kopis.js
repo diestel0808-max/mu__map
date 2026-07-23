@@ -37,12 +37,16 @@ export default async function handler(req, res) {
     // 상세조회는 stdate/eddate 불필요
     kopisUrl = `https://kopis.or.kr/openApi/restful/${safePath}?service=${KOPIS_KEY}`;
   } else {
-    const { stdate, eddate, cpage = '1', rows = '20' } = kopisParams;
+    const { stdate, eddate, cpage = '1', rows = '20', shprfnm } = kopisParams;
     if(!stdate || !eddate){
       return res.status(400).json({ error: 'stdate, eddate 필요' });
     }
     // KOPIS 목록조회는 cpage, rows가 필수 파라미터 (없으면 INVALID REQUEST PARAMETER ERROR 발생)
     kopisUrl = `https://kopis.or.kr/openApi/restful/${safePath}?service=${KOPIS_KEY}&stdate=${stdate}&eddate=${eddate}&cpage=${cpage}&rows=${rows}`;
+    // shprfnm(제목)이 있으면 KOPIS 서버측 검색 필터로 추가 — 반드시 encodeURIComponent로 재인코딩
+    if(shprfnm){
+      kopisUrl += `&shprfnm=${encodeURIComponent(shprfnm)}`;
+    }
   }
   console.log('[KOPIS] URL:', kopisUrl.replace(KOPIS_KEY, '***'));
 
