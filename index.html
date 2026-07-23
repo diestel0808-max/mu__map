@@ -60,6 +60,9 @@ button,input,textarea,select{font-family:inherit}
   background:#fff;border:none;cursor:pointer;white-space:nowrap}
 .sort-btn.active{background:var(--ink);color:#fff}
 .ongoing-dist{font-size:11px;color:var(--soft);margin-top:2px}
+.progress-track{width:160px;height:6px;border-radius:4px;background:var(--line2);
+  overflow:hidden;margin:14px auto 0}
+.progress-bar{height:100%;background:var(--ink);border-radius:4px;transition:width .2s ease;width:0%}
 
 /* LIST */
 .list{padding:12px 12px 100px;display:flex;flex-direction:column;gap:10px}
@@ -1436,12 +1439,15 @@ async function renderOngoingList(){
     const keyOf=x=>x.venue+'|'+(x.area||'');
     const uniqueKeys=[...new Set(list.map(keyOf))];
     const toDo=uniqueKeys.filter(k=>!venueCoordsCache.has(k));
-    // 표시하려는 개수(ongoingShowCount)만큼 좌표가 확보될 때까지만 순차 지오코딩 (전체를 다 돌리지 않아 속도↑)
+    // 표시하려는 개수(ongoingShowCount)만큼 좌표가 확보될 때까지만 순차 지오코딩하되,
+    // 실패(못 찾은 공연장)가 많아도 하염없이 돌지 않도록 최대 시도 횟수를 제한
+    const maxChecks=Math.min(toDo.length, ongoingShowCount*2+10);
     let covered=list.filter(x=>{const c=venueCoordsCache.get(keyOf(x));return c;}).length;
     let i=0;
-    while(covered<ongoingShowCount && i<toDo.length){
+    while(covered<ongoingShowCount && i<maxChecks){
       const key=toDo[i];
-      box.innerHTML=`<div class="empty"><div class="ico">📍</div>공연장 위치 확인 중… (${i+1}/${toDo.length})</div>`;
+      const pct=Math.round(((i+1)/maxChecks)*100);
+      box.innerHTML=`<div class="empty"><div class="ico">📍</div>공연장 위치 확인 중…<div class="progress-track"><div class="progress-bar" style="width:${pct}%"></div></div></div>`;
       const idx=key.lastIndexOf('|');
       const c=await getVenueCoords(key.slice(0,idx),key.slice(idx+1));
       if(c)covered+=list.filter(x=>keyOf(x)===key).length;
