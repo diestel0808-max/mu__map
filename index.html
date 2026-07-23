@@ -1252,7 +1252,7 @@ let ongoingItems=[]; // {item,nm,venue,mt10id,from,to,dday,status,poster}
 let ongoingSort='date'; // 'date' | 'dist'
 let ongoingQuery='';
 let userCoords=null;
-const venueCoordsCache=new Map(); // mt10id -> {lat,lng} | null(실패)
+const venueCoordsCache=new Map(); // venueName -> {lat,lng} | null(실패)
 
 $('#tabBookBtn').onclick=()=>{
   $('#tabBookBtn').classList.add('active');$('#tabOngoingBtn').classList.remove('active');
@@ -1305,20 +1305,26 @@ function haversine(lat1,lng1,lat2,lng2){
   const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
   return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
-async function getVenueCoords(mt10id){
-  if(!mt10id)return null;
-  if(venueCoordsCache.has(mt10id))return venueCoordsCache.get(mt10id);
+async function getVenueCoords(venueName){
+  if(!venueName)return null;
+  if(venueCoordsCache.has(venueName))return venueCoordsCache.get(venueName);
   try{
-    const res=await fetch(`/api/kopis?path=prfplc/${mt10id}`);
+    const res=await fetch(`/api/kopis?path=prfplc&cpage=1&rows=10&shprfnmfct=${encodeURIComponent(venueName)}`);
     const raw=await res.text();
     const xml=new DOMParser().parseFromString(raw,'text/xml');
-    const lat=parseFloat(xml.querySelector('la')?.textContent);
-    const lng=parseFloat(xml.querySelector('lo')?.textContent);
-    const coords=(isFinite(lat)&&isFinite(lng)&&lat&&lng)?{lat,lng}:null;
-    venueCoordsCache.set(mt10id,coords);
+    const dbs=[...xml.querySelectorAll('db')];
+    // 이름이 정확히 일치하는 시설을 우선 사용, 없으면 검색된 첫 번째 결과 사용
+    const best=dbs.find(d=>d.querySelector('fcltynm')?.textContent===venueName)||dbs[0];
+    let coords=null;
+    if(best){
+      const lat=parseFloat(best.querySelector('la')?.textContent);
+      const lng=parseFloat(best.querySelector('lo')?.textContent);
+      if(isFinite(lat)&&isFinite(lng)&&lat&&lng)coords={lat,lng};
+    }
+    venueCoordsCache.set(venueName,coords);
     return coords;
   }catch(e){
-    venueCoordsCache.set(mt10id,null);
+    venueCoordsCache.set(venueName,null);
     return null;
   }
 }
@@ -1370,7 +1376,8 @@ async function loadOngoingMusicals(){
       const to=item.querySelector('prfpdto')?.textContent||'';
       const poster=item.querySelector('poster')?.textContent||'';
       const d=dday(from);
-      return {nm,venue,mt10id,from,to,poster,dday:d,status:d>0?'upcoming':'ongoing'};
+      const cd=dday(to);
+      return {nm,venue,mt10id,from,to,poster,dday:d,closeDday:cd,status:d>0?'upcoming':'ongoing'};
     }).filter(x=>x.from&&x.to);
     renderOngoingList();
   }catch(e){
@@ -1389,19 +1396,17 @@ async function renderOngoingList(){
     box.innerHTML='<div class="empty"><div class="ico">📍</div>거리 정보를 계산하는 중…</div>';
     // 화면에 보일 항목들의 공연장 좌표를 병렬로 조회 (캐시 재사용)
     await Promise.all(list.map(async x=>{
-      const c=await getVenueCoords(x.mt10id);
+      const c=await getVenueCoords(x.venue);
       x._dist=c?haversine(userCoords.lat,userCoords.lng,c.lat,c.lng):Infinity;
     }));
     list=[...list].sort((a,b)=>a._dist-b._dist);
   }else{
-    list=[...list].sort((a,b)=>{
-      if(a.status!==b.status)return a.status==='ongoing'?-1:1;
-      return a.dday-b.dday;
-    });
+    // 기간순: 폐막(종료)이 얼마 안 남은 순서로 정렬
+    list=[...list].sort((a,b)=>a.closeDday-b.closeDday);
   }
   box.innerHTML=list.map(x=>{
     const posterUrl=x.poster?`/api/kopis?path=poster&url=${encodeURIComponent(x.poster)}`:'';
-    const badge=x.status==='ongoing'?'공연 중':`개막 D-${x.dday}`;
+    const badge=x.status==='ongoing'?`공연 중 · 종료 D-${x.closeDday}`:`개막 D-${x.dday}`;
     const distLine=(ongoingSort==='dist'&&isFinite(x._dist))?`<div class="ongoing-dist">📍 ${x._dist.toFixed(1)}km</div>`:'';
     return `<div class="ongoing-card">
       ${posterUrl
