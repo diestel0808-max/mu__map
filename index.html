@@ -1252,6 +1252,7 @@ let ongoingItems=[]; // {item,nm,venue,mt10id,from,to,dday,status,poster}
 let ongoingSort='date'; // 'date' | 'dist'
 let ongoingQuery='';
 let userCoords=null;
+let ongoingShowCount=20; // 한 번에 보여줄 개수, '더보기'로 20씩 증가
 const venueCoordsCache=new Map(); // "venue|area" -> {lat,lng} | null(실패)
 
 $('#tabBookBtn').onclick=()=>{
@@ -1266,16 +1267,19 @@ $('#tabOngoingBtn').onclick=()=>{
 
 $('#ongoingSearch').addEventListener('input',e=>{
   ongoingQuery=e.target.value.trim();
+  ongoingShowCount=20;
   renderOngoingList();
 });
 $('#sortDateBtn').onclick=()=>{
   ongoingSort='date';
+  ongoingShowCount=20;
   $('#sortDateBtn').classList.add('active');$('#sortDistBtn').classList.remove('active');
   renderOngoingList();
 };
 $('#sortDistBtn').onclick=async()=>{
   $('#sortDistBtn').classList.add('active');$('#sortDateBtn').classList.remove('active');
   ongoingSort='dist';
+  ongoingShowCount=20;
   if(!userCoords){
     const box=$('#ongoingList');
     box.innerHTML='<div class="empty"><div class="ico">📍</div>위치 정보를 확인하는 중…</div>';
@@ -1345,14 +1349,18 @@ async function loadOngoingMusicals(){
   try{
     // 오늘 ~ 90일 후 범위로 뮤지컬(GGGA)을 페이지네이션으로 끝까지 조회
     // (진행중인 공연 + 90일 내 개막 예정인 공연을 함께 확보)
+    // rows는 KOPIS가 큰 값에서 오류를 낼 수 있어 검증된 50으로 유지, 대신 페이지 수를 늘려 커버
     let items=[];
-    for(let cpage=1;cpage<=10;cpage++){
-      const rows=100;
+    for(let cpage=1;cpage<=20;cpage++){
+      const rows=50;
       const url=`/api/kopis?path=pblprfr&stdate=${stStr}&eddate=${edStr}&cpage=${cpage}&rows=${rows}&shcate=GGGA`;
       const res=await fetch(url);
       const raw=await res.text();
       const xml=new DOMParser().parseFromString(raw,'text/xml');
       const page=[...xml.querySelectorAll('db')];
+      if(cpage===1&&!page.length){
+        console.warn('[Ongoing] KOPIS 응답에 db 항목 없음. 원본 응답:', raw.slice(0,300));
+      }
       items=items.concat(page);
       if(page.length<rows)break; // 마지막 페이지
     }
@@ -1406,19 +1414,23 @@ async function renderOngoingList(){
     return;
   }
   if(ongoingSort==='dist'&&userCoords){
-    const uniqueKeys=[...new Set(list.map(x=>x.venue+'|'+(x.area||'')))];
+    const keyOf=x=>x.venue+'|'+(x.area||'');
+    const uniqueKeys=[...new Set(list.map(keyOf))];
     const toDo=uniqueKeys.filter(k=>!venueCoordsCache.has(k));
-    let done=0;
-    for(const key of toDo){
-      box.innerHTML=`<div class="empty"><div class="ico">📍</div>공연장 위치 확인 중… (${done}/${toDo.length})</div>`;
+    // 표시하려는 개수(ongoingShowCount)만큼 좌표가 확보될 때까지만 순차 지오코딩 (전체를 다 돌리지 않아 속도↑)
+    let covered=list.filter(x=>{const c=venueCoordsCache.get(keyOf(x));return c;}).length;
+    let i=0;
+    while(covered<ongoingShowCount && i<toDo.length){
+      const key=toDo[i];
+      box.innerHTML=`<div class="empty"><div class="ico">📍</div>공연장 위치 확인 중… (${i+1}/${toDo.length})</div>`;
       const idx=key.lastIndexOf('|');
-      const venue=key.slice(0,idx), area=key.slice(idx+1);
-      await getVenueCoords(venue,area);
-      done++;
+      const c=await getVenueCoords(key.slice(0,idx),key.slice(idx+1));
+      if(c)covered+=list.filter(x=>keyOf(x)===key).length;
+      i++;
       await new Promise(r=>setTimeout(r,250));
     }
     list.forEach(x=>{
-      const c=venueCoordsCache.get(x.venue+'|'+(x.area||''));
+      const c=venueCoordsCache.get(keyOf(x));
       x._dist=c?haversine(userCoords.lat,userCoords.lng,c.lat,c.lng):Infinity;
     });
     list=[...list].sort((a,b)=>a._dist-b._dist);
@@ -1426,7 +1438,13 @@ async function renderOngoingList(){
     // 기간순: 폐막(종료)이 얼마 안 남은 순서로 정렬
     list=[...list].sort((a,b)=>a.closeDday-b.closeDday);
   }
-  box.innerHTML=list.map(x=>{
+  const hasMore = list.length>ongoingShowCount || (ongoingSort==='dist' && uniqueKeysRemain());
+  function uniqueKeysRemain(){
+    const keyOf=x=>x.venue+'|'+(x.area||'');
+    return list.some(x=>!venueCoordsCache.has(keyOf(x)));
+  }
+  const shown=list.slice(0,ongoingShowCount);
+  box.innerHTML=shown.map(x=>{
     const posterUrl=x.poster?`/api/kopis?path=poster&url=${encodeURIComponent(x.poster)}`:'';
     const badge=x.status==='ongoing'?`공연 중 · 종료 D-${x.closeDday}`:`개막 D-${x.dday}`;
     const distLine=(ongoingSort==='dist'&&isFinite(x._dist))?`<div class="ongoing-dist">📍 ${x._dist.toFixed(1)}km</div>`:'';
@@ -1442,7 +1460,10 @@ async function renderOngoingList(){
         ${distLine}
       </div>
     </div>`;
-  }).join('');
+  }).join('') + (hasMore?`<button class="wbtn" id="ongoingMoreBtn" style="margin:12px 16px 20px;width:calc(100% - 32px)">더보기</button>`:'');
+  if(hasMore){
+    $('#ongoingMoreBtn').onclick=()=>{ ongoingShowCount+=20; renderOngoingList(); };
+  }
 }
 
 
