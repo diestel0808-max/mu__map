@@ -26,7 +26,7 @@ export default async function handler(req, res) {
 
   const ALLOWED_PATHS = ['pblprfr'];
   const safePath = ALLOWED_PATHS.find(p => path.startsWith(p)) ? path : 'pblprfr';
-  const searchParams = new URLSearchParams({ ...params, service: KOPIS_KEY, newsql: 'Y' });
+  const searchParams = new URLSearchParams({ ...params, service: KOPIS_KEY });
   const kopisUrl = `https://www.kopis.or.kr/openApi/restful/${safePath}?${searchParams}`;
 
   try {
