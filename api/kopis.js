@@ -28,14 +28,22 @@ export default async function handler(req, res) {
     }
   }
 
-  // KOPIS API 호출 - stdate, eddate만 전달
-  const { stdate, eddate } = kopisParams;
-  if(!stdate || !eddate){
-    return res.status(400).json({ error: 'stdate, eddate 필요' });
-  }
-
+  // KOPIS API 호출
   const safePath = path.startsWith('pblprfr') ? path : 'pblprfr';
-  const kopisUrl = `https://kopis.or.kr/openApi/restful/${safePath}?service=${KOPIS_KEY}&stdate=${stdate}&eddate=${eddate}`;
+  const isDetail = /^pblprfr\/.+/.test(safePath); // 상세조회는 /pblprfr/{mt20id}
+
+  let kopisUrl;
+  if (isDetail) {
+    // 상세조회는 stdate/eddate 불필요
+    kopisUrl = `https://kopis.or.kr/openApi/restful/${safePath}?service=${KOPIS_KEY}`;
+  } else {
+    const { stdate, eddate, cpage = '1', rows = '20' } = kopisParams;
+    if(!stdate || !eddate){
+      return res.status(400).json({ error: 'stdate, eddate 필요' });
+    }
+    // KOPIS 목록조회는 cpage, rows가 필수 파라미터 (없으면 INVALID REQUEST PARAMETER ERROR 발생)
+    kopisUrl = `https://kopis.or.kr/openApi/restful/${safePath}?service=${KOPIS_KEY}&stdate=${stdate}&eddate=${eddate}&cpage=${cpage}&rows=${rows}`;
+  }
   console.log('[KOPIS] URL:', kopisUrl.replace(KOPIS_KEY, '***'));
 
   try {
