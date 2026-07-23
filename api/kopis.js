@@ -60,9 +60,11 @@ export default async function handler(req, res) {
     // 상세조회는 stdate/eddate 불필요
     kopisUrl = `https://kopis.or.kr/openApi/restful/${safePath}?service=${KOPIS_KEY}`;
   } else if (basePath === 'prfplc') {
-    // 공연시설 목록 검색 (시설명으로 좌표 조회 등) — stdate/eddate 불필요, cpage/rows만 필수
-    const { cpage = '1', rows = '10', shprfnmfct } = kopisParams;
-    kopisUrl = `https://kopis.or.kr/openApi/restful/prfplc?service=${KOPIS_KEY}&cpage=${cpage}&rows=${rows}`;
+    // 공연시설 목록 검색 (시설명으로 좌표 조회 등)
+    // KOPIS 계열 API는 stdate/eddate를 공통으로 요구하는 경우가 많아 안전하게 넓은 기본값을 채움
+    const { cpage = '1', rows = '10', shprfnmfct, stdate = '19700101', eddate } = kopisParams;
+    const today = new Date().toISOString().slice(0,10).replace(/-/g,'');
+    kopisUrl = `https://kopis.or.kr/openApi/restful/prfplc?service=${KOPIS_KEY}&cpage=${cpage}&rows=${rows}&stdate=${stdate}&eddate=${eddate||today}`;
     if(shprfnmfct){
       kopisUrl += `&shprfnmfct=${encodeURIComponent(shprfnmfct)}`;
     }
@@ -87,7 +89,7 @@ export default async function handler(req, res) {
   try {
     const upstream = await fetch(kopisUrl, { headers: { 'User-Agent': 'mumap/1.0' } });
     const xml = await upstream.text();
-    console.log('[KOPIS] 응답 앞부분:', xml.slice(0, 150));
+    console.log('[KOPIS] 응답:', xml.slice(0, 500));
     res.setHeader('Content-Type', 'application/xml; charset=utf-8');
     return res.status(200).send(xml);
   } catch(e) {
