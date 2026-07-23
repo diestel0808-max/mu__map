@@ -62,6 +62,14 @@ button,input,textarea,select{font-family:inherit}
 .ongoing-dist{font-size:11px;color:var(--soft);margin-top:2px}
 .curated-reason{font-size:11px;color:#8a5a00;background:#fff6e0;border-radius:6px;
   padding:4px 8px;margin-top:6px;display:inline-block;line-height:1.4}
+/* 로딩 애니메이션 */
+.ld-ico{display:inline-block;animation:ldBounce 1s ease-in-out infinite}
+@keyframes ldBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+.ld-dots{display:inline-block;width:1.2em;text-align:left}
+.ld-dots span{opacity:.2;animation:ldBlink 1.4s infinite}
+.ld-dots span:nth-child(2){animation-delay:.2s}
+.ld-dots span:nth-child(3){animation-delay:.4s}
+@keyframes ldBlink{0%,80%,100%{opacity:.2}40%{opacity:1}}
 /* ONGOING DETAIL MODAL */
 .odetail-modal{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:998;
   display:flex;align-items:flex-end;justify-content:center}
@@ -673,6 +681,10 @@ async function removeT(id){
 
 /* ── HELPERS ── */
 const esc=s=>(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function loadingHTML(icon,text,pct){
+  const bar=(typeof pct==='number')?`<div class="progress-track"><div class="progress-bar" style="width:${pct}%"></div></div>`:'';
+  return `<div class="empty"><div class="ico ld-ico">${icon}</div>${text}<span class="ld-dots"><span>.</span><span>.</span><span>.</span></span>${bar}</div>`;
+}
 const castArr=c=>(c||'').split(',').map(s=>s.trim()).filter(Boolean);
 const starStr=n=>'★'.repeat(n)+'☆'.repeat(5-n);
 
@@ -1356,7 +1368,7 @@ $('#sortDistBtn').onclick=async()=>{
   ongoingShowCount=10;
   if(!userCoords){
     const box=$('#ongoingList');
-    box.innerHTML='<div class="empty"><div class="ico">📍</div>위치 정보를 확인하는 중…</div>';
+    box.innerHTML=loadingHTML('📍','위치 정보를 확인하는 중');
     try{
       userCoords=await new Promise((res,rej)=>{
         if(!navigator.geolocation)return rej(new Error('geolocation 미지원'));
@@ -1491,7 +1503,6 @@ async function getVenueCoords(venueName,area){
 
 async function loadOngoingMusicals(){
   const box=$('#ongoingList');
-  box.innerHTML='<div class="empty"><div class="ico">🎭</div>뮤지컬 정보를 불러오는 중…</div>';
   const today=new Date();
   const toYmd=d=>d.toISOString().slice(0,10).replace(/-/g,'');
   const stStr=toYmd(today);
@@ -1502,7 +1513,10 @@ async function loadOngoingMusicals(){
     // (진행중인 공연 + 90일 내 개막 예정인 공연을 함께 확보)
     // rows는 KOPIS가 큰 값에서 오류를 낼 수 있어 검증된 50으로 유지, 대신 페이지 수를 늘려 커버
     let items=[];
-    for(let cpage=1;cpage<=20;cpage++){
+    const maxPages=20;
+    for(let cpage=1;cpage<=maxPages;cpage++){
+      const pct=Math.round((cpage/maxPages)*100);
+      box.innerHTML=loadingHTML('🎭','뮤지컬 정보를 불러오는 중',pct);
       const rows=50;
       const url=`/api/kopis?path=pblprfr&stdate=${stStr}&eddate=${edStr}&cpage=${cpage}&rows=${rows}&shcate=GGGA`;
       const res=await fetch(url);
@@ -1577,7 +1591,7 @@ async function renderOngoingList(){
       if(gen!==ongoingRenderGen)return; // 그 사이 다른 렌더(예: 기간순 전환)가 시작됐으면 즉시 중단
       const key=toDo[i];
       const pct=Math.round(((i+1)/toDo.length)*100);
-      box.innerHTML=`<div class="empty"><div class="ico">📍</div>공연장 위치 확인 중…<div class="progress-track"><div class="progress-bar" style="width:${pct}%"></div></div></div>`;
+      box.innerHTML=loadingHTML('📍','공연장 위치 확인 중',pct);
       const idx=key.lastIndexOf('|');
       await getVenueCoords(key.slice(0,idx),key.slice(idx+1));
       if(gen!==ongoingRenderGen)return; // 대기 중 전환됐으면 결과 반영하지 않고 중단
@@ -1633,7 +1647,7 @@ async function renderOngoingList(){
 async function openOngoingDetail(mt20id){
   const modal=$('#odetailModal'), body=$('#odetailBody'), titleEl=$('#odetailTitle');
   titleEl.textContent='공연 정보';
-  body.innerHTML='<div class="empty"><div class="ico">🎭</div>불러오는 중…</div>';
+  body.innerHTML=loadingHTML('🎭','불러오는 중');
   modal.hidden=false;
   const d=await kopisFullDetail(mt20id);
   if(!d){
@@ -1669,19 +1683,100 @@ $('#odetailModal').addEventListener('click',e=>{
 /* ── CURATED (내 취향 기반 추천) ── */
 const curatedDetailCache=new Map(); // mt20id -> {cast,...} | null
 
-function buildTasteProfile(){
+const seatScaleCache=new Map(); // "id:mt10id" 또는 "nm:공연장명" -> 좌석수 | null
+async function getSeatScaleByMt10id(mt10id){
+  if(!mt10id)return null;
+  const key='id:'+mt10id;
+  if(seatScaleCache.has(key))return seatScaleCache.get(key);
+  try{
+    const res=await fetchWithTimeout(`/api/kopis?path=prfplc/${mt10id}`,4000);
+    const raw=await res.text();
+    const xml=new DOMParser().parseFromString(raw,'text/xml');
+    const dbNode=xml.querySelector('db')||xml;
+    const v=parseInt(dbNode.querySelector('seatscale')?.textContent||'',10);
+    const result=(isFinite(v)&&v>0)?v:null;
+    seatScaleCache.set(key,result);
+    return result;
+  }catch(e){ seatScaleCache.set(key,null); return null; }
+}
+async function getSeatScaleByVenueName(name){
+  const key='nm:'+name;
+  if(seatScaleCache.has(key))return seatScaleCache.get(key);
+  try{
+    const res=await fetchWithTimeout(`/api/kopis?path=prfplc&cpage=1&rows=5&shprfnmfct=${encodeURIComponent(name)}`,4000);
+    const raw=await res.text();
+    const xml=new DOMParser().parseFromString(raw,'text/xml');
+    const dbs=[...xml.querySelectorAll('db')];
+    const best=dbs.find(d=>d.querySelector('fcltynm')?.textContent===name)||dbs[0];
+    const mt10id=best?.querySelector('mt10id')?.textContent;
+    const result=mt10id?await getSeatScaleByMt10id(mt10id):null;
+    seatScaleCache.set(key,result);
+    return result;
+  }catch(e){ seatScaleCache.set(key,null); return null; }
+}
+function extractMaxPrice(priceText){
+  if(!priceText)return null;
+  const nums=[...priceText.matchAll(/([\d,]+)\s*원/g)].map(m=>parseInt(m[1].replace(/,/g,''),10)).filter(n=>isFinite(n)&&n>0);
+  return nums.length?Math.max(...nums):null;
+}
+async function getPastTicketDetail(t){
+  // 과거에 등록한 티켓의 제목/날짜로 KOPIS에서 원본 공연을 재검색해 가격·제작사 정보를 얻음
+  const lsKey='mumap_past_detail:v1:'+t.title+'|'+t.date;
+  try{
+    const raw=localStorage.getItem(lsKey);
+    if(raw!==null)return JSON.parse(raw);
+  }catch(e){}
+  let result=null;
+  try{
+    const cands=await kopisSearch(t.title,t.date);
+    if(cands&&cands.length&&cands[0].mt){
+      const d=await kopisFullDetail(cands[0].mt);
+      if(d)result={price:extractMaxPrice(d.price),producer:d.producer||''};
+    }
+  }catch(e){}
+  try{ localStorage.setItem(lsKey, JSON.stringify(result)); }catch(e){}
+  return result;
+}
+async function buildTasteProfile(){
   const actorScore=new Map(); // 배우명 -> 가중치 합
   const typeScore=new Map();  // 장르(뮤지컬/연극 등) -> 가중치 합
   const venueSet=new Set();   // 가봤던 공연장 이름
+  const producerScore=new Map(); // 제작사 -> 가중치 합
+  const venueWeights=[];      // {venue, weight}
   tickets.forEach(t=>{
     const w=(t.rating&&t.rating>0)?t.rating:2.5; // 별점 없으면 중간값으로 취급
     castArr(t.cast).forEach(name=>{
       actorScore.set(name,(actorScore.get(name)||0)+w);
     });
     if(t.type)typeScore.set(t.type,(typeScore.get(t.type)||0)+w);
-    if(t.venue)venueSet.add(t.venue);
+    if(t.venue){venueSet.add(t.venue);venueWeights.push({venue:t.venue,weight:w});}
   });
-  return {actorScore,typeScore,venueSet};
+  // 가봤던 공연장들의 좌석 규모를 조회해서 가중평균 → "보통 어느 규모 극장을 선호하는지" 추정
+  const uniqueVenues=[...new Set(venueWeights.map(v=>v.venue))];
+  let totalW=0,totalScaleW=0;
+  for(const vn of uniqueVenues){
+    const scale=await getSeatScaleByVenueName(vn);
+    if(scale){
+      const w=venueWeights.filter(v=>v.venue===vn).reduce((s,v)=>s+v.weight,0);
+      totalW+=w;totalScaleW+=scale*w;
+    }
+  }
+  const avgSeatScale=totalW>0?Math.round(totalScaleW/totalW):null;
+  // 과거 티켓들을 KOPIS에서 재검색해서 가격대·제작사 취향도 함께 파악 (최대 15건까지만, 비용 고려)
+  let totalPW=0,totalPriceW=0;
+  for(const t of tickets.slice(0,15)){
+    const w=(t.rating&&t.rating>0)?t.rating:2.5;
+    const info=await getPastTicketDetail(t);
+    if(!info)continue;
+    if(info.price){totalPW+=w;totalPriceW+=info.price*w;}
+    if(info.producer){
+      info.producer.split(',').map(s=>s.trim()).filter(Boolean).forEach(p=>{
+        producerScore.set(p,(producerScore.get(p)||0)+w);
+      });
+    }
+  }
+  const avgMaxPrice=totalPW>0?Math.round(totalPriceW/totalPW):null;
+  return {actorScore,typeScore,venueSet,avgSeatScale,avgMaxPrice,producerScore};
 }
 
 async function getCuratedDetail(mt20id){
@@ -1704,9 +1799,9 @@ async function loadCurated(){
     curatedLoaded=true;
     return;
   }
-  box.innerHTML='<div class="empty"><div class="ico">🎭</div>취향을 분석하는 중…</div>';
+  box.innerHTML=loadingHTML('🎭','취향을 분석하는 중');
   if(!ongoingLoaded)await loadOngoingMusicals();
-  const profile=buildTasteProfile();
+  const profile=await buildTasteProfile();
   // 지금 실제로 공연 중인 것만 후보로 (개막예정 제외), 상세조회 비용을 감안해 최대 40개로 제한
   const candidates=ongoingItems.filter(x=>x.status==='ongoing').slice(0,40);
   if(!candidates.length){
@@ -1717,7 +1812,7 @@ async function loadCurated(){
   const scored=[];
   for(let i=0;i<candidates.length;i++){
     const pct=Math.round(((i+1)/candidates.length)*100);
-    box.innerHTML=`<div class="empty"><div class="ico">🎭</div>취향에 맞는 공연을 찾는 중…<div class="progress-track"><div class="progress-bar" style="width:${pct}%"></div></div></div>`;
+    box.innerHTML=loadingHTML('🎭','취향에 맞는 공연을 찾는 중',pct);
     const c=candidates[i];
     const d=await getCuratedDetail(c.mt20id);
     if(!d)continue;
@@ -1729,8 +1824,31 @@ async function loadCurated(){
       score+=matchedActors.reduce((s,n)=>s+profile.actorScore.get(n),0)*3;
       reasons.push(`${matchedActors.slice(0,2).join(', ')} 배우 출연`);
     }
-    const typeW=profile.typeScore.get('뮤지컬')||0; // Ongoing 후보는 전부 뮤지컬 장르
-    if(typeW)score+=typeW*0.3;
+    // 공연장 규모(좌석수) 매칭 — 평소 선호하는 극장 규모와 비슷할수록 가산점
+    const seatScale=await getSeatScaleByMt10id(c.mt10id);
+    if(profile.avgSeatScale&&seatScale){
+      const ratio=Math.min(seatScale,profile.avgSeatScale)/Math.max(seatScale,profile.avgSeatScale);
+      score+=ratio*8;
+      if(ratio>0.5)reasons.push(seatScale>=1000?'대극장 공연으로 규모가 비슷해요':'평소 선호하시는 규모와 비슷해요');
+      // 평소 대극장(1000석↑) 위주인데 후보가 소극장(400석 미만)이면 크게 감점 (사실상 추천 제외)
+      if(profile.avgSeatScale>=1000&&seatScale<400)score-=15;
+    }
+    // 티켓 가격대 매칭 — 평소 관람하던 가격대와 비슷하면 가산점
+    const maxPrice=extractMaxPrice(d.price);
+    if(profile.avgMaxPrice&&maxPrice){
+      const ratio=Math.min(maxPrice,profile.avgMaxPrice)/Math.max(maxPrice,profile.avgMaxPrice);
+      score+=ratio*4;
+      if(ratio>0.5&&maxPrice>=100000)reasons.push('평소 즐겨 보시는 가격대의 공연');
+    }
+    // 제작사 매칭 — 이전에 좋아했던 제작사의 신작이면 가산점
+    if(d.producer){
+      const producers=d.producer.split(',').map(s=>s.trim()).filter(Boolean);
+      const matchedProducers=producers.filter(p=>profile.producerScore.has(p));
+      if(matchedProducers.length){
+        score+=matchedProducers.reduce((s,p)=>s+profile.producerScore.get(p),0)*2;
+        reasons.push(`${matchedProducers[0]} 제작 작품`);
+      }
+    }
     if(profile.venueSet.has(c.venue)){
       score+=2;
       reasons.push(`이전에 관람한 ${c.venue}에서 공연`);
