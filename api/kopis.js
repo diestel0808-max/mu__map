@@ -29,13 +29,22 @@ export default async function handler(req, res) {
   }
 
   // KOPIS API 호출
-  const safePath = (path.startsWith('pblprfr') || path.startsWith('prfplc')) ? path : 'pblprfr';
+  const basePath = path.split('/')[0];
+  const isKnownBase = basePath === 'pblprfr' || basePath === 'prfplc';
+  const safePath = isKnownBase ? path : 'pblprfr';
   const isDetail = /^(pblprfr|prfplc)\/.+/.test(safePath); // 상세조회는 /pblprfr/{mt20id} 또는 /prfplc/{mt10id}
 
   let kopisUrl;
   if (isDetail) {
     // 상세조회는 stdate/eddate 불필요
     kopisUrl = `https://kopis.or.kr/openApi/restful/${safePath}?service=${KOPIS_KEY}`;
+  } else if (basePath === 'prfplc') {
+    // 공연시설 목록 검색 (시설명으로 좌표 조회 등) — stdate/eddate 불필요, cpage/rows만 필수
+    const { cpage = '1', rows = '10', shprfnmfct } = kopisParams;
+    kopisUrl = `https://kopis.or.kr/openApi/restful/prfplc?service=${KOPIS_KEY}&cpage=${cpage}&rows=${rows}`;
+    if(shprfnmfct){
+      kopisUrl += `&shprfnmfct=${encodeURIComponent(shprfnmfct)}`;
+    }
   } else {
     const { stdate, eddate, cpage = '1', rows = '20', shprfnm, shcate } = kopisParams;
     if(!stdate || !eddate){
