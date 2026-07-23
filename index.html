@@ -1315,7 +1315,7 @@ async function fetchWithTimeout(url,ms){
   try{ return await fetch(url,{signal:ctrl.signal}); }
   finally{ clearTimeout(t); }
 }
-const LS_PREFIX='mumap_venue_geo:';
+const LS_PREFIX='mumap_venue_geo:v2:';
 function lsGetCoords(key){
   try{
     const raw=localStorage.getItem(LS_PREFIX+key);
