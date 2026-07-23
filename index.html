@@ -60,6 +60,25 @@ button,input,textarea,select{font-family:inherit}
   background:#fff;border:none;cursor:pointer;white-space:nowrap}
 .sort-btn.active{background:var(--ink);color:#fff}
 .ongoing-dist{font-size:11px;color:var(--soft);margin-top:2px}
+/* ONGOING DETAIL MODAL */
+.odetail-modal{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:998;
+  display:flex;align-items:flex-end;justify-content:center}
+.odetail-modal[hidden]{display:none}
+.odetail-sheet{background:var(--panel);width:100%;max-width:480px;max-height:85vh;
+  border-radius:20px 20px 0 0;display:flex;flex-direction:column;overflow:hidden}
+.odetail-head{display:flex;align-items:center;justify-content:space-between;
+  padding:16px;border-bottom:1px solid var(--line)}
+.odetail-t{font-size:16px;font-weight:800;padding-right:12px}
+.odetail-close{background:var(--chip);border:none;border-radius:50%;width:28px;height:28px;
+  flex-shrink:0;cursor:pointer;font-size:13px;color:var(--ink2)}
+.odetail-body{overflow-y:auto;padding:16px}
+.od-poster{width:100%;max-width:180px;border-radius:10px;display:block;margin:0 auto 16px;box-shadow:0 4px 14px -8px rgba(0,0,0,.3)}
+.od-row{display:flex;gap:14px;padding:10px 0;border-bottom:1px solid var(--line)}
+.od-row:last-child{border-bottom:none}
+.od-label{width:64px;flex-shrink:0;font-size:12px;font-weight:700;color:var(--soft)}
+.od-val{flex:1;font-size:13px;color:var(--ink);line-height:1.6;white-space:pre-line}
+.od-book-btn{display:block;width:100%;text-align:center;background:var(--ink);color:#fff;
+  border-radius:10px;padding:12px;font-size:13px;font-weight:700;margin-top:16px;text-decoration:none}
 .progress-track{width:160px;height:6px;border-radius:4px;background:var(--line2);
   overflow:hidden;margin:14px auto 0}
 .progress-bar{height:100%;background:var(--ink);border-radius:4px;transition:width .2s ease;width:0%}
@@ -368,6 +387,17 @@ input[type="date"],input[type="time"]{-webkit-min-logical-width:0;min-width:0;pa
       </div>
     </div>
     <div class="list" id="ongoingList"></div>
+  </div>
+
+  <!-- ONGOING DETAIL MODAL -->
+  <div class="odetail-modal" id="odetailModal" hidden>
+    <div class="odetail-sheet">
+      <div class="odetail-head">
+        <div class="odetail-t" id="odetailTitle">공연 정보</div>
+        <button type="button" class="odetail-close" id="odetailCloseBtn">✕</button>
+      </div>
+      <div class="odetail-body" id="odetailBody"></div>
+    </div>
   </div>
 </div>
 
@@ -693,6 +723,38 @@ async function kopisSearch(title,date){
 }
 
 
+async function kopisFullDetail(mt20id){
+  try{
+    const res=await fetch(`/api/kopis?path=pblprfr/${mt20id}`);
+    const raw=await res.text();
+    const xml=new DOMParser().parseFromString(raw,'text/xml');
+    const db=xml.querySelector('db');
+    if(!db)return null;
+    const t=tag=>db.querySelector(tag)?.textContent?.trim()||'';
+    return {
+      title:t('prfnm'),
+      venue:t('fcltynm'),
+      dateFrom:t('prfpdfrom'),
+      dateTo:t('prfpdto'),
+      time:t('dtguidance'), // 요일별 공연시간 안내
+      age:t('prfage'),
+      runtime:t('prfruntime'),
+      price:t('pcseguidance'),
+      cast:t('prfcast'),
+      crew:t('prfcrew'),
+      producer:t('entrpsnmP'), // 제작
+      planner:t('entrpsnmA'), // 기획
+      host:t('entrpsnmH'), // 주최
+      organizer:t('entrpsnmS'), // 주관
+      poster:t('poster'),
+      bookingUrl:t('relateurl'),
+      genre:t('genrenm')
+    };
+  }catch(e){
+    console.error('[KOPIS 상세] 에러:', e);
+    return null;
+  }
+}
 async function kopisDetail(mt20id){
   try{
     const url=`/api/kopis?path=pblprfr/${mt20id}`;
@@ -1459,6 +1521,7 @@ async function loadOngoingMusicals(){
     const toDate=s=>new Date(s.replace(/\./g,'-')+'T00:00:00');
     const dday=s=>Math.round((toDate(s)-todayMid)/86400000);
     ongoingItems=items.map(item=>{
+      const mt20id=item.querySelector('mt20id')?.textContent||'';
       const nm=item.querySelector('prfnm')?.textContent||'';
       const venue=item.querySelector('fcltynm')?.textContent||'';
       const area=item.querySelector('area')?.textContent||'';
@@ -1468,7 +1531,7 @@ async function loadOngoingMusicals(){
       const poster=item.querySelector('poster')?.textContent||'';
       const d=dday(from);
       const cd=dday(to);
-      return {nm,venue,area,mt10id,from,to,poster,dday:d,closeDday:cd,status:d>0?'upcoming':'ongoing'};
+      return {mt20id,nm,venue,area,mt10id,from,to,poster,dday:d,closeDday:cd,status:d>0?'upcoming':'ongoing'};
     }).filter(x=>x.from&&x.to);
     renderOngoingList();
   }catch(e){
@@ -1529,7 +1592,7 @@ async function renderOngoingList(){
     const posterUrl=x.poster?`/api/kopis?path=poster&url=${encodeURIComponent(x.poster)}`:'';
     const badge=x.status==='ongoing'?`공연 중 · 종료 D-${x.closeDday}`:`개막 D-${x.dday}`;
     const distLine=(ongoingSort==='dist'&&isFinite(x._dist))?`<div class="ongoing-dist">📍 ${x._dist.toFixed(1)}km</div>`:'';
-    return `<div class="ongoing-card">
+    return `<div class="ongoing-card" data-mt20id="${esc(x.mt20id||'')}">
       ${posterUrl
         ?`<img class="ongoing-poster" src="${posterUrl}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ongoing-poster',style:'display:flex;align-items:center;justify-content:center;font-size:20px',textContent:'🎭'}))">`
         :`<div class="ongoing-poster" style="display:flex;align-items:center;justify-content:center;font-size:20px">🎭</div>`}
@@ -1545,7 +1608,51 @@ async function renderOngoingList(){
   if(hasMore){
     $('#ongoingMoreBtn').onclick=()=>{ ongoingShowCount+=10; renderOngoingList(); };
   }
+  box.querySelectorAll('.ongoing-card').forEach(card=>{
+    card.style.cursor='pointer';
+    card.addEventListener('click',()=>{
+      const id=card.dataset.mt20id;
+      if(id)openOngoingDetail(id);
+    });
+  });
 }
+
+/* ── ONGOING 상세 모달 ── */
+async function openOngoingDetail(mt20id){
+  const modal=$('#odetailModal'), body=$('#odetailBody'), titleEl=$('#odetailTitle');
+  titleEl.textContent='공연 정보';
+  body.innerHTML='<div class="empty"><div class="ico">🎭</div>불러오는 중…</div>';
+  modal.hidden=false;
+  const d=await kopisFullDetail(mt20id);
+  if(!d){
+    body.innerHTML='<div class="empty"><div class="ico">⚠️</div>정보를 불러오지 못했어요.</div>';
+    return;
+  }
+  titleEl.textContent=d.title||'공연 정보';
+  const posterUrl=d.poster?`/api/kopis?path=poster&url=${encodeURIComponent(d.poster)}`:'';
+  const rows=[
+    ['공연기간', `${d.dateFrom} ~ ${d.dateTo}`],
+    ['공연장소', d.venue],
+    ['공연시간', d.time],
+    ['관람연령', d.age],
+    ['공연시간(러닝타임)', d.runtime],
+    ['티켓가격', d.price],
+    ['출연진', d.cast],
+    ['제작진', d.crew],
+    ['제작', d.producer],
+    ['기획', d.planner],
+    ['주최', d.host],
+    ['주관', d.organizer],
+  ].filter(([,v])=>v&&v.trim());
+  body.innerHTML=
+    (posterUrl?`<img class="od-poster" src="${posterUrl}" onerror="this.style.display='none'">`:'')
+    + rows.map(([label,val])=>`<div class="od-row"><div class="od-label">${esc(label)}</div><div class="od-val">${esc(val)}</div></div>`).join('')
+    + (d.bookingUrl?`<a class="od-book-btn" href="${esc(d.bookingUrl)}" target="_blank" rel="noopener">예매처 바로가기</a>`:'');
+}
+$('#odetailCloseBtn').onclick=()=>{ $('#odetailModal').hidden=true; };
+$('#odetailModal').addEventListener('click',e=>{
+  if(e.target.id==='odetailModal')$('#odetailModal').hidden=true;
+});
 
 
 
