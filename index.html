@@ -581,8 +581,8 @@ async function kopisSearch(title,date){
   }else{
     const yr=new Date().getFullYear();st=(yr-2)+'0101';ed=yr+'1231';
   }
-  // shprfnm 완전 제거 — 한글 파라미터가 KOPIS에서 INVALID 에러 발생
-  const url=`/api/kopis?path=pblprfr&stdate=${st}&eddate=${ed}`;
+  // shprfnm(제목)으로 KOPIS 서버측 필터링 — 반드시 encodeURIComponent로 인코딩해야 함
+  const url=`/api/kopis?path=pblprfr&stdate=${st}&eddate=${ed}&rows=50&shprfnm=${encodeURIComponent(cleanTitle)}`;
   console.log('[KOPIS] 검색:', url, '/ 제목:', cleanTitle);
   try{
     const res=await fetch(url);
