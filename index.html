@@ -1305,18 +1305,24 @@ function haversine(lat1,lng1,lat2,lng2){
   const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
   return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
+async function fetchWithTimeout(url,ms){
+  const ctrl=new AbortController();
+  const t=setTimeout(()=>ctrl.abort(),ms);
+  try{ return await fetch(url,{signal:ctrl.signal}); }
+  finally{ clearTimeout(t); }
+}
 async function getVenueCoords(venueName,area){
   const key=venueName+'|'+(area||'');
   if(!venueName)return null;
   if(venueCoordsCache.has(key))return venueCoordsCache.get(key);
   try{
     const q=[venueName,area,'대한민국'].filter(Boolean).join(' ');
-    const res=await fetch(`/api/kopis?path=geocode&q=${encodeURIComponent(q)}`);
+    const res=await fetchWithTimeout(`/api/kopis?path=geocode&q=${encodeURIComponent(q)}`,4000);
     const data=await res.json();
     let coords=(typeof data.lat==='number'&&typeof data.lng==='number')?{lat:data.lat,lng:data.lng}:null;
     // 지역명 포함 검색이 실패하면 공연장 이름만으로 한 번 더 시도
     if(!coords&&area){
-      const res2=await fetch(`/api/kopis?path=geocode&q=${encodeURIComponent(venueName+' 대한민국')}`);
+      const res2=await fetchWithTimeout(`/api/kopis?path=geocode&q=${encodeURIComponent(venueName+' 대한민국')}`,4000);
       const data2=await res2.json();
       coords=(typeof data2.lat==='number'&&typeof data2.lng==='number')?{lat:data2.lat,lng:data2.lng}:null;
     }
@@ -1388,19 +1394,27 @@ async function loadOngoingMusicals(){
 async function renderOngoingList(){
   const box=$('#ongoingList');
   let list=ongoingItems.filter(x=>!ongoingQuery||x.nm.toLowerCase().includes(ongoingQuery.toLowerCase()));
+  // 가까운순은 "오늘 기준 진행 중"인 공연만 대상으로 함 (개막 예정 제외)
+  if(ongoingSort==='dist'){
+    list=list.filter(x=>x.status==='ongoing');
+  }
   if(!list.length){
-    box.innerHTML=`<div class="empty"><div class="ico">🔍</div>${ongoingQuery?'검색 결과가 없어요.':'현재 진행 중이거나 개막 예정인 뮤지컬 정보가 없어요.'}</div>`;
+    let msg='현재 진행 중이거나 개막 예정인 뮤지컬 정보가 없어요.';
+    if(ongoingQuery)msg='검색 결과가 없어요.';
+    else if(ongoingSort==='dist')msg='오늘 기준으로 공연 중인 뮤지컬이 없어요.';
+    box.innerHTML=`<div class="empty"><div class="ico">🔍</div>${msg}</div>`;
     return;
   }
   if(ongoingSort==='dist'&&userCoords){
-    box.innerHTML='<div class="empty"><div class="ico">📍</div>거리 정보를 계산하는 중…</div>';
-    // 고유한 공연장만 순차적으로 지오코딩 (Nominatim 요청 제한 준수를 위해 병렬 호출 X)
     const uniqueKeys=[...new Set(list.map(x=>x.venue+'|'+(x.area||'')))];
-    for(const key of uniqueKeys){
-      if(venueCoordsCache.has(key))continue;
+    const toDo=uniqueKeys.filter(k=>!venueCoordsCache.has(k));
+    let done=0;
+    for(const key of toDo){
+      box.innerHTML=`<div class="empty"><div class="ico">📍</div>공연장 위치 확인 중… (${done}/${toDo.length})</div>`;
       const idx=key.lastIndexOf('|');
       const venue=key.slice(0,idx), area=key.slice(idx+1);
       await getVenueCoords(venue,area);
+      done++;
       await new Promise(r=>setTimeout(r,250));
     }
     list.forEach(x=>{
