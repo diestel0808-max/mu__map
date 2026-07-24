@@ -21,6 +21,10 @@
   --line:#e3e3e6;--line2:#d2d2d6;--chip:#f4f4f5;--accent:#b5202a;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root{--ease:cubic-bezier(.16,1,.3,1);--ease-spring:cubic-bezier(.34,1.56,.64,1)}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
+}
 html{-webkit-text-size-adjust:100%}
 body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);line-height:1.5;-webkit-font-smoothing:antialiased}
 button,input,textarea,select{font-family:inherit}
@@ -40,9 +44,13 @@ button,input,textarea,select{font-family:inherit}
 .tabbar{position:sticky;top:67px;z-index:19;background:var(--bg);display:flex;
   border-bottom:1px solid var(--line);padding:0 16px}
 .tab-btn{flex:1;text-align:center;padding:12px 0;font-size:14px;font-weight:700;
-  color:var(--soft);background:none;border:none;cursor:pointer;position:relative;transition:.15s}
+  color:var(--soft);background:none;border:none;cursor:pointer;position:relative;
+  transition:color .2s var(--ease)}
 .tab-btn.active{color:var(--ink)}
-.tab-btn.active::after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--ink)}
+.tab-indicator{position:absolute;bottom:-1px;height:2px;background:var(--ink);
+  transition:left .3s var(--ease),width .3s var(--ease);pointer-events:none}
+.tab-content{transition:opacity .18s var(--ease);}
+.tab-content.tc-hide{opacity:0}
 .ongoing-card{background:var(--panel);border:1px solid var(--line);border-radius:14px;
   padding:12px;display:flex;gap:12px;align-items:flex-start}
 .ongoing-poster{width:56px;height:76px;border-radius:8px;object-fit:cover;background:var(--chip);flex-shrink:0}
@@ -61,7 +69,9 @@ button,input,textarea,select{font-family:inherit}
 .sort-btn.active{background:var(--ink);color:#fff}
 .ongoing-dist{font-size:11px;color:var(--soft);margin-top:2px}
 .curated-reason{font-size:11px;color:#8a5a00;background:#fff6e0;border-radius:6px;
-  padding:4px 8px;margin-top:6px;display:inline-block;line-height:1.4}
+  padding:4px 8px;margin-top:6px;display:inline-block;line-height:1.4;
+  animation:reasonIn .35s var(--ease) both}
+@keyframes reasonIn{from{opacity:0;transform:translateX(-4px)}to{opacity:1;transform:translateX(0)}}
 /* 로딩 애니메이션 */
 .ld-ico{display:inline-block;animation:ldBounce 1s ease-in-out infinite}
 @keyframes ldBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
@@ -71,11 +81,14 @@ button,input,textarea,select{font-family:inherit}
 .ld-dots span:nth-child(3){animation-delay:.4s}
 @keyframes ldBlink{0%,80%,100%{opacity:.2}40%{opacity:1}}
 /* ONGOING DETAIL MODAL */
-.odetail-modal{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:998;
-  display:flex;align-items:flex-end;justify-content:center}
-.odetail-modal[hidden]{display:none}
+.odetail-modal{position:fixed;inset:0;background:rgba(0,0,0,0);z-index:998;
+  display:flex;align-items:flex-end;justify-content:center;
+  opacity:0;pointer-events:none;transition:opacity .25s var(--ease),background-color .25s var(--ease)}
+.odetail-modal.open{opacity:1;pointer-events:auto;background:rgba(0,0,0,.5)}
 .odetail-sheet{background:var(--panel);width:100%;max-width:480px;max-height:85vh;
-  border-radius:20px 20px 0 0;display:flex;flex-direction:column;overflow:hidden}
+  border-radius:20px 20px 0 0;display:flex;flex-direction:column;overflow:hidden;
+  transform:translateY(24px);transition:transform .35s var(--ease-spring)}
+.odetail-modal.open .odetail-sheet{transform:translateY(0)}
 .odetail-head{display:flex;align-items:center;justify-content:space-between;
   padding:16px;border-bottom:1px solid var(--line)}
 .odetail-t{font-size:16px;font-weight:800;padding-right:12px}
@@ -91,7 +104,12 @@ button,input,textarea,select{font-family:inherit}
   border-radius:10px;padding:12px;font-size:13px;font-weight:700;margin-top:16px;text-decoration:none}
 .progress-track{width:160px;height:6px;border-radius:4px;background:var(--line2);
   overflow:hidden;margin:14px auto 0}
-.progress-bar{height:100%;background:var(--ink);border-radius:4px;transition:width .2s ease;width:0%}
+.progress-bar{height:100%;background:var(--ink);border-radius:4px;transition:width .3s var(--ease);
+  width:0%;position:relative;overflow:hidden}
+.progress-bar::after{content:'';position:absolute;inset:0;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);
+  animation:shimmer 1.2s linear infinite}
+@keyframes shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
 
 /* LIST */
 .list{padding:12px 12px 100px;display:flex;flex-direction:column;gap:10px}
@@ -100,7 +118,8 @@ button,input,textarea,select{font-family:inherit}
 .empty .h{font-size:17px;font-weight:800;color:var(--ink);margin-bottom:6px}
 .empty-btn{background:var(--ink);color:#fff;border:none;border-radius:12px;padding:12px 24px;font-weight:700;cursor:pointer;margin-top:14px}
 .hcard{background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 4px 14px -8px rgba(0,0,0,.2);
-  display:flex;cursor:pointer;min-height:132px}
+  display:flex;cursor:pointer;min-height:132px;transition:transform .15s var(--ease),box-shadow .15s var(--ease)}
+.hcard:active{transform:scale(.98)}
 .hcard .poster{width:96px;flex-shrink:0;background:#23232c;position:relative}
 .hcard .poster img{width:100%;height:100%;object-fit:cover;display:block}
 .hcard .poster .nop{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
@@ -110,13 +129,16 @@ button,input,textarea,select{font-family:inherit}
 .hcard .s-info{font-size:12px;color:var(--ink2);line-height:1.5}
 .hcard .s-cast{font-size:11px;color:var(--soft)}
 .hcard .s-rating{font-size:11px;color:#e0a93b;margin-top:auto}
-.slot{position:relative}
+.slot{position:relative;animation:cardIn .4s var(--ease) both}
 .slot .del{position:absolute;top:6px;right:6px;width:28px;height:28px;border-radius:50%;
   background:rgba(0,0,0,.75);color:#fff;border:none;cursor:pointer;font-size:14px;
   display:none;align-items:center;justify-content:center;z-index:5;line-height:1}
 .editing .del{display:flex}
 .editing .hcard{animation:wig .45s ease-in-out infinite}
 @keyframes wig{0%,100%{transform:rotate(-.6deg)}50%{transform:rotate(.6deg)}}
+@keyframes cardIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.ongoing-card{transition:transform .15s var(--ease),box-shadow .15s var(--ease);animation:cardIn .4s var(--ease) both}
+.ongoing-card:active{transform:scale(.98)}
 
 /* SCREEN */
 .screen{position:fixed;top:0;bottom:0;z-index:60;background:var(--bg);
@@ -134,6 +156,10 @@ button,input,textarea,select{font-family:inherit}
 .sbar .back{background:none;border:none;font-size:24px;cursor:pointer;width:32px;color:var(--ink);flex-shrink:0}
 .sbar .t{font-size:17px;font-weight:800;letter-spacing:-.02em;flex:1}
 .sbody{padding:16px 16px 80px}
+.sbody.step-fwd{animation:stepInFwd .32s var(--ease) both}
+.sbody.step-back{animation:stepInBack .32s var(--ease) both}
+@keyframes stepInFwd{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:translateX(0)}}
+@keyframes stepInBack{from{opacity:0;transform:translateX(-16px)}to{opacity:1;transform:translateX(0)}}
 
 /* STEPPER */
 .stepper{display:flex;align-items:center;gap:4px;padding:14px 18px;background:rgba(240,237,232,.96);border-bottom:1px solid var(--line)}
@@ -203,8 +229,10 @@ input[type="date"],input[type="time"]{-webkit-min-logical-width:0;min-width:0;pa
 
 /* STARS */
 .stars{display:flex;gap:6px;font-size:28px;margin-bottom:14px}
-.stars span{cursor:pointer;opacity:.2;transition:.15s}
+.stars span{cursor:pointer;opacity:.2;transition:transform .15s var(--ease-spring),opacity .15s var(--ease)}
 .stars span.on{opacity:1;color:#e0a93b}
+.stars span.pop{animation:starPop .35s var(--ease-spring)}
+@keyframes starPop{0%{transform:scale(1)}40%{transform:scale(1.4)}100%{transform:scale(1)}}
 
 /* EXTRAS */
 .extras-wrap{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
@@ -234,13 +262,19 @@ input[type="date"],input[type="time"]{-webkit-min-logical-width:0;min-width:0;pa
 .wbtn.primary:hover{background:#000}
 
 /* DONE */
-.done-wrap{text-align:center;padding:40px 20px 24px}
+.done-wrap{text-align:center;padding:40px 20px 24px;position:relative;overflow:hidden}
 .done-check{width:72px;height:72px;border-radius:50%;background:var(--ink);color:#fff;
   display:flex;align-items:center;justify-content:center;font-size:34px;margin:0 auto 16px;
-  animation:pop .4s cubic-bezier(.2,.8,.2,1)}
+  animation:pop .4s cubic-bezier(.2,.8,.2,1);position:relative;z-index:2}
+.done-check::before{content:'';position:absolute;inset:-8px;border-radius:50%;
+  border:2px solid var(--ink);opacity:0;animation:ring .6s ease-out .15s both}
 @keyframes pop{0%{transform:scale(.5);opacity:0}100%{transform:scale(1);opacity:1}}
-.done-t{font-size:20px;font-weight:800;letter-spacing:-.02em}
-.done-s{font-size:13px;color:var(--soft);margin-top:6px}
+@keyframes ring{0%{transform:scale(.8);opacity:.6}100%{transform:scale(1.6);opacity:0}}
+.done-t{font-size:20px;font-weight:800;letter-spacing:-.02em;animation:cardIn .4s var(--ease) .15s both}
+.done-s{font-size:13px;color:var(--soft);margin-top:6px;animation:cardIn .4s var(--ease) .25s both}
+.confetti{position:absolute;width:7px;height:7px;top:36px;border-radius:2px;opacity:0;
+  animation:confettiFall 1s var(--ease) both}
+@keyframes confettiFall{0%{opacity:1;transform:translateY(0) rotate(0)}100%{opacity:0;transform:translateY(90px) rotate(200deg)}}
 
 /* ── TICKET DESIGN ── */
 /* 앞면: 포스터 온전하게, 텍스트 없음 */
@@ -344,9 +378,12 @@ input[type="date"],input[type="time"]{-webkit-min-logical-width:0;min-width:0;pa
 .notice{background:#fffbe6;border:1px solid #f0d060;border-radius:10px;padding:12px 14px;font-size:12.5px;line-height:1.6;color:#6b5500;margin-bottom:14px}
 .notice b{font-weight:700}
 /* CROP MODAL */
-.crop-modal{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:999;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px}
-.crop-modal[hidden]{display:none}
+.crop-modal{position:fixed;inset:0;background:rgba(0,0,0,0);z-index:999;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;
+  opacity:0;pointer-events:none;transition:opacity .25s var(--ease),background-color .25s var(--ease)}
+.crop-modal.open{opacity:1;pointer-events:auto;background:rgba(0,0,0,.88)}
+.crop-modal .crop-stage,.crop-modal .crop-head,.crop-modal .crop-foot{transform:scale(.96);opacity:0;transition:transform .3s var(--ease-spring),opacity .25s var(--ease)}
+.crop-modal.open .crop-stage,.crop-modal.open .crop-head,.crop-modal.open .crop-foot{transform:scale(1);opacity:1}
 .crop-head{color:#fff;font-size:14px;font-weight:700;margin-bottom:14px;text-align:center}
 .crop-stage{position:relative;max-width:100%;max-height:60vh;touch-action:none;
   display:flex;align-items:center;justify-content:center;overflow:hidden}
@@ -387,9 +424,10 @@ input[type="date"],input[type="time"]{-webkit-min-logical-width:0;min-width:0;pa
     <button class="tab-btn active" id="tabBookBtn">Ticket Book</button>
     <button class="tab-btn" id="tabOngoingBtn">Ongoing</button>
     <button class="tab-btn" id="tabCuratedBtn">Curated</button>
+    <div class="tab-indicator" id="tabIndicator"></div>
   </div>
-  <div class="list" id="list"></div>
-  <div id="ongoingWrap" style="display:none">
+  <div class="list tab-content" id="list"></div>
+  <div id="ongoingWrap" class="tab-content" style="display:none">
     <div class="ongoing-controls" id="ongoingControls">
       <input id="ongoingSearch" type="text" placeholder="공연명 검색">
       <div class="sort-toggle">
@@ -399,12 +437,12 @@ input[type="date"],input[type="time"]{-webkit-min-logical-width:0;min-width:0;pa
     </div>
     <div class="list" id="ongoingList"></div>
   </div>
-  <div id="curatedWrap" style="display:none">
+  <div id="curatedWrap" class="tab-content" style="display:none">
     <div class="list" id="curatedList"></div>
   </div>
 
   <!-- ONGOING DETAIL MODAL -->
-  <div class="odetail-modal" id="odetailModal" hidden>
+  <div class="odetail-modal" id="odetailModal">
     <div class="odetail-sheet">
       <div class="odetail-head">
         <div class="odetail-t" id="odetailTitle">공연 정보</div>
@@ -449,7 +487,7 @@ input[type="date"],input[type="time"]{-webkit-min-logical-width:0;min-width:0;pa
     <div class="ocr-wrap"><div id="ocrStatus"></div></div>
 
     <!-- CROP MODAL -->
-    <div class="crop-modal" id="cropModal" hidden>
+    <div class="crop-modal" id="cropModal">
       <div class="crop-head">티켓에서 글자가 보이는 부분만 잘라주세요</div>
       <div class="crop-stage" id="cropStage">
         <img id="cropImg" alt="">
@@ -608,6 +646,7 @@ function showApp(){
   document.getElementById('mainApp').style.display='block';
   document.getElementById('logoutBtn').style.display='flex';
   document.getElementById('logoutBtn').style.visibility='visible';
+  setTimeout(()=>{ if(typeof moveTabIndicator==='function')moveTabIndicator($('#tabBookBtn')); },30);
 }
 
 // URL hash에서 세션 처리 (모바일 구글 로그인 대응)
@@ -646,6 +685,7 @@ handleAuthRedirect();
 
 const PALETTE=['#2F3A3A','#AFA48E','#6E7E73','#B86F52','#C57B6B','#35505C'];
 const $=s=>document.querySelector(s);
+const $$=s=>[...document.querySelectorAll(s)];
 const uid=()=>'tk_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
 
 let tickets=[],editId=null,editing=false;
@@ -890,14 +930,14 @@ function openCropModal(file){
   lastRawFile=file;
   const modal=$('#cropModal'), img=$('#cropImg');
   img.src=URL.createObjectURL(file);
-  modal.hidden=false;
+  modal.classList.add('open');
   img.onload=()=>{
     const iw=img.clientWidth, ih=img.clientHeight;
     // 기본 크롭 영역: 좌우 5%, 상하 10% 여백에서 시작 (사용자가 드래그로 조정)
     setBox(iw*0.05, ih*0.1, iw*0.9, ih*0.8);
   };
 }
-function closeCropModal(){ $('#cropModal').hidden=true; }
+function closeCropModal(){ $('#cropModal').classList.remove('open'); }
 function setBox(x,y,w,h){
   const box=$('#cropBox');
   box.style.left=x+'px';box.style.top=y+'px';box.style.width=w+'px';box.style.height=h+'px';
@@ -1079,9 +1119,10 @@ function render(){
   }
   list.className='list'+(editing?' editing':'');
   list.innerHTML='';
-  [...tickets].reverse().forEach(t=>{
+  [...tickets].reverse().forEach((t,idx)=>{
     const cast=castArr(t.cast);
     const slot=document.createElement('div');slot.className='slot';
+    slot.style.animationDelay=(Math.min(idx,8)*0.04)+'s';
     slot.innerHTML=`
       <div class="hcard" data-id="${t.id}">
         <div class="poster">${t.poster?`<img src="${t.poster}" alt="">`:'<div class="nop">NO<br>IMG</div>'}</div>
@@ -1143,8 +1184,20 @@ function fillForm(t){
   $('#fType').value=t.type||'뮤지컬';
 }
 
+let __curStep=1;
 function gotoStep(n){
-  [1,2,3,4].forEach(i=>{const el=$('#step'+i);if(el)el.style.display=i===n?'block':'none';});
+  const dir=n>=__curStep?'step-fwd':'step-back';
+  __curStep=n;
+  [1,2,3,4].forEach(i=>{
+    const el=$('#step'+i);
+    if(!el)return;
+    el.style.display=i===n?'block':'none';
+    if(i===n){
+      el.classList.remove('step-fwd','step-back');
+      void el.offsetWidth;
+      el.classList.add(dir);
+    }
+  });
   document.querySelectorAll('.stp').forEach(el=>{
     const s=+el.dataset.s;
     el.classList.toggle('cur',s===n);
@@ -1154,6 +1207,22 @@ function gotoStep(n){
   });
   if(n===2){renderSwatches();renderPosterBox();}
   if(n===3){renderStars();renderExtras();}
+  if(n===4)spawnConfetti();
+}
+function spawnConfetti(){
+  const wrap=$('#step4 .done-wrap');
+  if(!wrap)return;
+  wrap.querySelectorAll('.confetti').forEach(e=>e.remove());
+  const colors=['#e0a93b','#b5202a','#1a7a40','#3a6fd8','#8a5ac0'];
+  for(let i=0;i<14;i++){
+    const c=document.createElement('div');
+    c.className='confetti';
+    c.style.left=(45+Math.random()*10+(Math.random()-0.5)*30)+'%';
+    c.style.background=colors[i%colors.length];
+    c.style.animationDelay=(Math.random()*0.3)+'s';
+    c.style.transform=`rotate(${Math.random()*360}deg)`;
+    wrap.appendChild(c);
+  }
 }
 
 function renderSwatches(){
@@ -1320,7 +1389,16 @@ $('#to2Btn').onclick=()=>{gotoStep(2);if($('#fTitle').value.trim())tryKopis();};
 
 // 별점
 document.querySelectorAll('#stars span').forEach(st=>{
-  st.onclick=()=>{draft.rating=(+st.dataset.v===draft.rating)?0:+st.dataset.v;renderStars();};
+  st.onclick=()=>{
+    draft.rating=(+st.dataset.v===draft.rating)?0:+st.dataset.v;
+    renderStars();
+    document.querySelectorAll('#stars span.on').forEach((s,i)=>{
+      s.classList.remove('pop');
+      void s.offsetWidth; // 리플로우 강제로 애니메이션 재시작
+      s.style.animationDelay=(i*0.03)+'s';
+      s.classList.add('pop');
+    });
+  };
 });
 
 // 편집 모드
@@ -1335,21 +1413,45 @@ let userCoords=null;
 let ongoingShowCount=10; // 한 번에 보여줄 개수, '더보기'로 10씩 증가
 const venueCoordsCache=new Map(); // "venue|area" -> {lat,lng} | null(실패)
 
+function moveTabIndicator(btn){
+  const ind=$('#tabIndicator'), bar=$('.tabbar');
+  const br=btn.getBoundingClientRect(), pr=bar.getBoundingClientRect();
+  ind.style.left=(br.left-pr.left)+'px';
+  ind.style.width=br.width+'px';
+}
+function switchTab(activeBtn,showEl,others){
+  $$('.tab-btn').forEach(b=>b.classList.remove('active'));
+  activeBtn.classList.add('active');
+  moveTabIndicator(activeBtn);
+  const cur=others.find(el=>el.style.display!=='none');
+  const doSwitch=()=>{
+    others.forEach(el=>el.style.display='none');
+    showEl.style.display='';
+    showEl.classList.add('tc-hide');
+    requestAnimationFrame(()=>showEl.classList.remove('tc-hide'));
+  };
+  if(cur&&cur!==showEl){
+    cur.classList.add('tc-hide');
+    setTimeout(doSwitch,120);
+  }else{
+    doSwitch();
+  }
+}
 $('#tabBookBtn').onclick=()=>{
-  $('#tabBookBtn').classList.add('active');$('#tabOngoingBtn').classList.remove('active');$('#tabCuratedBtn').classList.remove('active');
-  $('#list').style.display='';$('#ongoingWrap').style.display='none';$('#curatedWrap').style.display='none';
+  switchTab($('#tabBookBtn'),$('#list'),[$('#list'),$('#ongoingWrap'),$('#curatedWrap')]);
 };
 $('#tabOngoingBtn').onclick=()=>{
-  $('#tabOngoingBtn').classList.add('active');$('#tabBookBtn').classList.remove('active');$('#tabCuratedBtn').classList.remove('active');
-  $('#list').style.display='none';$('#ongoingWrap').style.display='';$('#curatedWrap').style.display='none';
+  switchTab($('#tabOngoingBtn'),$('#ongoingWrap'),[$('#list'),$('#ongoingWrap'),$('#curatedWrap')]);
   if(!ongoingLoaded)loadOngoingMusicals();
 };
 let curatedLoaded=false;
 $('#tabCuratedBtn').onclick=()=>{
-  $('#tabCuratedBtn').classList.add('active');$('#tabBookBtn').classList.remove('active');$('#tabOngoingBtn').classList.remove('active');
-  $('#list').style.display='none';$('#ongoingWrap').style.display='none';$('#curatedWrap').style.display='';
+  switchTab($('#tabCuratedBtn'),$('#curatedWrap'),[$('#list'),$('#ongoingWrap'),$('#curatedWrap')]);
   if(!curatedLoaded)loadCurated();
 };
+// 초기 인디케이터 위치 세팅 (레이아웃 확정 후)
+window.addEventListener('load',()=>moveTabIndicator($('#tabBookBtn')));
+setTimeout(()=>moveTabIndicator($('#tabBookBtn')),50);
 
 $('#ongoingSearch').addEventListener('input',e=>{
   ongoingQuery=e.target.value.trim();
@@ -1614,11 +1716,11 @@ async function renderOngoingList(){
     return list.some(x=>!venueCoordsCache.has(keyOf(x)));
   }
   const shown=list.slice(0,ongoingShowCount);
-  box.innerHTML=shown.map(x=>{
+  box.innerHTML=shown.map((x,idx)=>{
     const posterUrl=x.poster?`/api/kopis?path=poster&url=${encodeURIComponent(x.poster)}`:'';
     const badge=x.status==='ongoing'?`공연 중 · 종료 D-${x.closeDday}`:`개막 D-${x.dday}`;
     const distLine=(ongoingSort==='dist'&&isFinite(x._dist))?`<div class="ongoing-dist">📍 ${x._dist.toFixed(1)}km</div>`:'';
-    return `<div class="ongoing-card" data-mt20id="${esc(x.mt20id||'')}">
+    return `<div class="ongoing-card" data-mt20id="${esc(x.mt20id||'')}" style="animation-delay:${Math.min(idx,8)*0.04}s">
       ${posterUrl
         ?`<img class="ongoing-poster" src="${posterUrl}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ongoing-poster',style:'display:flex;align-items:center;justify-content:center;font-size:20px',textContent:'🎭'}))">`
         :`<div class="ongoing-poster" style="display:flex;align-items:center;justify-content:center;font-size:20px">🎭</div>`}
@@ -1648,7 +1750,7 @@ async function openOngoingDetail(mt20id){
   const modal=$('#odetailModal'), body=$('#odetailBody'), titleEl=$('#odetailTitle');
   titleEl.textContent='공연 정보';
   body.innerHTML=loadingHTML('🎭','불러오는 중');
-  modal.hidden=false;
+  modal.classList.add('open');
   const d=await kopisFullDetail(mt20id);
   if(!d){
     body.innerHTML='<div class="empty"><div class="ico">⚠️</div>정보를 불러오지 못했어요.</div>';
@@ -1675,9 +1777,9 @@ async function openOngoingDetail(mt20id){
     + rows.map(([label,val])=>`<div class="od-row"><div class="od-label">${esc(label)}</div><div class="od-val">${esc(val)}</div></div>`).join('')
     + (d.bookingUrl?`<a class="od-book-btn" href="${esc(d.bookingUrl)}" target="_blank" rel="noopener">예매처 바로가기</a>`:'');
 }
-$('#odetailCloseBtn').onclick=()=>{ $('#odetailModal').hidden=true; };
+$('#odetailCloseBtn').onclick=()=>{ $('#odetailModal').classList.remove('open'); };
 $('#odetailModal').addEventListener('click',e=>{
-  if(e.target.id==='odetailModal')$('#odetailModal').hidden=true;
+  if(e.target.id==='odetailModal')$('#odetailModal').classList.remove('open');
 });
 
 /* ── CURATED (내 취향 기반 추천) ── */
@@ -1865,10 +1967,10 @@ async function loadCurated(){
     box.innerHTML='<div class="empty"><div class="ico">🎭</div>아직 뚜렷한 취향 매칭을 찾지 못했어요.<br>티켓을 더 등록하면 정확도가 올라가요.</div>';
     return;
   }
-  box.innerHTML=top.map(({item:x,reasons,score})=>{
+  box.innerHTML=top.map(({item:x,reasons,score},idx)=>{
     const posterUrl=x.poster?`/api/kopis?path=poster&url=${encodeURIComponent(x.poster)}`:'';
     const reasonText=reasons.length?reasons.join(' · '):(score>0?'취향과 유사한 작품이에요':'지금 진행 중인 뮤지컬이에요');
-    return `<div class="ongoing-card" data-mt20id="${esc(x.mt20id||'')}">
+    return `<div class="ongoing-card" data-mt20id="${esc(x.mt20id||'')}" style="animation-delay:${Math.min(idx,8)*0.05}s">
       ${posterUrl
         ?`<img class="ongoing-poster" src="${posterUrl}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ongoing-poster',style:'display:flex;align-items:center;justify-content:center;font-size:20px',textContent:'🎭'}))">`
         :`<div class="ongoing-poster" style="display:flex;align-items:center;justify-content:center;font-size:20px">🎭</div>`}
@@ -1876,7 +1978,7 @@ async function loadCurated(){
         <div class="ongoing-title">${esc(x.nm)}</div>
         <div class="ongoing-meta">${esc(x.venue)}</div>
         <div class="ongoing-meta">${esc(x.from)} ~ ${esc(x.to)}</div>
-        <div class="curated-reason">💡 ${esc(reasonText)}</div>
+        <div class="curated-reason" style="animation-delay:${Math.min(idx,8)*0.05+0.15}s">💡 ${esc(reasonText)}</div>
       </div>
     </div>`;
   }).join('');
